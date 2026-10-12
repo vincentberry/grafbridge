@@ -252,7 +252,7 @@ export async function addStudioSources(input, output, studioRoot) {
         const scene = JSON.parse(files.get('scene.json'));
         const built = buildStudioProject(scene, manifest, files, studio);
         const projectName = `${item.slug}.ogs`;
-        const notice = `# Editable OGraf Studio source\n\nApplication: GrafBridge 0.1.2\n\nOpen ${projectName} with File → Open in Studio 0.21, or import this ZIP with File → Import OGraf. Use Step 1 to inspect the visible graphic; Start is its entrance.\nThe embedded graphic.mjs keeps the GT rendering engine. Editable Studio exports use Studio's own rendering engine and may change text metrics and wrapping.\n\n## Review before re-export\n\n${built.warnings.map(w => `- ${w.node ? `${w.node}: ` : ''}${w.detail}`).join('\n')}\n\nReview font licenses before redistribution.\n`;
+        const notice = `# Editable OGraf Studio source\n\nApplication: GrafBridge 0.1.3\n\nOpen ${projectName} with File → Open in Studio 0.21, or import this ZIP with File → Import OGraf. Use Step 1 to inspect the visible graphic; Start is its entrance.\nThe embedded graphic.mjs keeps the GT rendering engine. Editable Studio exports use Studio's own rendering engine and may change text metrics and wrapping.\n\n## Review before re-export\n\n${built.warnings.map(w => `- ${w.node ? `${w.node}: ` : ''}${w.detail}`).join('\n')}\n\nReview font licenses before redistribution.\n`;
         manifest.version = PACKAGE_VERSION;
         files.set(manifestName, Buffer.from(encode(manifest)));
         files.set(projectName, Buffer.from(encode(built.project)));
@@ -291,7 +291,7 @@ export async function addStudioSources(input, output, studioRoot) {
     }
     report.packageVersion = PACKAGE_VERSION;
     await fs.writeFile(path.join(output, 'conversion-report.json'), encode(report));
-    await fs.writeFile(path.join(output, 'studio-import-report.json'), encode({ application: 'GrafBridge', applicationVersion: '0.1.2', packageVersion: PACKAGE_VERSION,
+    await fs.writeFile(path.join(output, 'studio-import-report.json'), encode({ application: 'GrafBridge', applicationVersion: '0.1.3', packageVersion: PACKAGE_VERSION,
         studioVersion: studio.version, checkedAt: new Date().toISOString(), templates: results }));
     await fs.copyFile(path.join(input, 'index.html'), path.join(output, 'index.html'));
     const inputReadme = await fs.readFile(path.join(input, 'README.md'), 'utf8').catch(error => {

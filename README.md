@@ -69,8 +69,8 @@ The **Release desktop** workflow tests the code, verifies a relocated standalone
 To publish a release, update `package.json` and its lockfile, commit, then push a matching version tag. The workflow checks tag/version agreement before publishing binaries to GitHub Releases.
 
 ```sh
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 ## Command-line tools

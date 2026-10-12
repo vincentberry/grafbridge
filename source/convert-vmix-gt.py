@@ -404,7 +404,7 @@ def main(argv=None):
         parser.error("No .gtzip titles to convert.")
     if len({slug(p.stem) for p in titles}) != len(titles):
         parser.error("Package names collide.")
-    report = {"application": "GrafBridge", "applicationVersion": "0.1.2", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
+    report = {"application": "GrafBridge", "applicationVersion": "0.1.3", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
     for source in titles:
         report["templates"].append(convert(source, args.output, args.fonts, args.barlow, args.cache, args.workers))
     for source in sorted(args.source.glob("MODELE/*.mogrt")):
