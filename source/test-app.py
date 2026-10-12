@@ -57,6 +57,27 @@ class AppTest(unittest.TestCase):
                 self.request(f'/api/upload?batch={uuid.uuid4().hex}&name={name}', raw=b'fake')
             self.assertEqual(context.exception.code, 400)
 
+    def test_missing_fonts_are_reported_before_conversion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with zipfile.ZipFile(root / 'title.gtzip', 'w') as archive:
+                archive.writestr('document.xml', '<Composition><TextBlock Name="LABEL" FontFamily="Example Sans" /></Composition>')
+            with self.request('/api/scan', {'source': str(root)}) as response:
+                result = json.load(response)
+            self.assertEqual(result['fonts']['missing'][0]['family'], 'Example Sans')
+            self.assertEqual(result['fonts']['missing'][0]['files'], ['Example-Sans-Regular.ttf', 'Example-Sans-Regular.otf'])
+            with self.assertRaises(HTTPError) as context:
+                self.request('/api/convert', {'source': str(root)})
+            self.assertEqual(context.exception.code, 422)
+            error = json.load(context.exception)
+            self.assertIn('Missing fonts: Example Sans', error['error'])
+            (root / 'Example-Sans-Regular.ttf').write_bytes((app.ROOT / 'fonts/Barlow-Regular.ttf').read_bytes())
+            with self.request('/api/scan', {'source': str(root), 'fonts': str(root)}) as response:
+                self.assertEqual(json.load(response)['fonts']['missing'], [])
+            with self.assertRaises(HTTPError) as context:
+                self.request('/api/scan', {'source': str(root), 'title': '../outside.gtzip'})
+            self.assertEqual(context.exception.code, 400)
+
     def test_upload_convert_preview_and_download(self):
         bitmap = BytesIO()
         Image.new('RGBA', (100, 100), 'green').save(bitmap, 'PNG')

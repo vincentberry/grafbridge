@@ -32,13 +32,7 @@ jobs:
       - name: Build embedded engine
         run: python scripts/build-backend.py
       - name: Verify embedded conversion
-        shell: pwsh
-        run: |
-          $env:GRAFBRIDGE_DATA_ROOT=$PWD.Path
-          & build/backend/grafbridge-backend/grafbridge-backend.exe --convert examples build/frozen-check
-          if ($LASTEXITCODE -ne 0) { throw 'Embedded conversion failed' }
-          python source/verify-packages.py build/frozen-check
-          if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
+        run: python scripts/test-embedded.py build/backend/grafbridge-backend.exe
       - name: Build desktop installers
         run: npm run dist:win
         env:

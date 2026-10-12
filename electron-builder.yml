@@ -8,8 +8,8 @@ files:
   - web/icon.ico
   - package.json
 extraResources:
-  - from: build/backend/grafbridge-backend
-    to: backend
+  - from: build/backend/grafbridge-backend.exe
+    to: backend/grafbridge-backend.exe
 win:
   icon: web/icon.ico
   target:

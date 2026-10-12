@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <meta charset="utf-8">
-<title>GrafBridge · Aperçu OGraf</title>
+<title>GrafBridge · OGraf Preview</title>
 <link rel="icon" href="data:,">
 <style>
-*{box-sizing:border-box}body{margin:0;background:#10151d;color:#f0f4fb;font:15px system-ui}header{padding:22px 30px;background:#1b2330;display:flex;align-items:center;gap:16px;flex-wrap:wrap}h1{font-size:21px;margin:0}button,select,a{font:inherit}button,select{background:#28374b;color:white;border:1px solid #4a5e79;border-radius:7px;padding:9px 14px}button{cursor:pointer}button:hover{background:#365578}main{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px}.stage{width:100%;aspect-ratio:16/9;position:relative;background-color:#222a34;background-image:linear-gradient(45deg,#303945 25%,transparent 25%),linear-gradient(-45deg,#303945 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#303945 75%),linear-gradient(-45deg,transparent 75%,#303945 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.stage>div{position:absolute;inset:0}.stage>*{width:100%;height:100%}textarea{width:100%;height:420px;resize:vertical;color:#dfe9fb;background:#171f2b;border:1px solid #40506a;padding:14px;font:12px/1.5 monospace}a{color:#91c8ff}#status{padding:0 24px 20px;color:#b6c6df}p{line-height:1.5}small{color:#afbbcc}@media(max-width:950px){main{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;background:#10151d;color:#f0f4fb;font:15px system-ui}header{padding:22px 30px;background:#1b2330;display:flex;align-items:center;gap:16px;flex-wrap:wrap}h1{font-size:21px;margin:0}button,select,a{font:inherit}button,select{background:#28374b;color:white;border:1px solid #4a5e79;border-radius:7px;padding:9px 14px}button{cursor:pointer}button{transition:background .18s,border-color .18s,transform .18s}button:not(:disabled):hover{background:#365578;border-color:#91c8ff;transform:translateY(-1px)}button:disabled{opacity:.5;cursor:not-allowed}button:focus-visible,a:focus-visible{outline:2px solid #91c8ff;outline-offset:3px}a:hover{color:white}main{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px}.stage{width:100%;aspect-ratio:16/9;position:relative;background-color:#222a34;background-image:linear-gradient(45deg,#303945 25%,transparent 25%),linear-gradient(-45deg,#303945 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#303945 75%),linear-gradient(-45deg,transparent 75%,#303945 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.stage>div{position:absolute;inset:0}.stage>*{width:100%;height:100%}textarea{width:100%;height:420px;resize:vertical;color:#dfe9fb;background:#171f2b;border:1px solid #40506a;padding:14px;font:12px/1.5 monospace}a{color:#91c8ff}#status{padding:0 24px 20px;color:#b6c6df}p{line-height:1.5}small{color:#afbbcc}@media(max-width:950px){main{grid-template-columns:1fr}}
 </style>
-<header><h1>GrafBridge · Aperçu OGraf</h1><select id="template" aria-label="Modèle"></select><button id="play">In</button><button id="next">Next</button><button id="stop">Out</button><a id="download">Télécharger le ZIP</a></header>
-<main><section><div class="stage" id="stage"></div><p>Prévisualisation locale avec des données fictives. Télécharger le ZIP pour l’utiliser dans un lecteur compatible EBU OGraf.</p><small>Les carreaux montrent la transparence ; ils ne font pas partie de la sortie vidéo. Les champs *_TEXT remplacent les noms fournis auparavant sous forme d’images.</small></section><aside><label for="data">Données de démonstration (JSON)</label><textarea id="data" spellcheck="false"></textarea><button id="update">Mettre à jour</button><p><a id="report">Détails de conversion</a></p></aside></main><div id="status" role="status">Chargement…</div>
+<header><h1>GrafBridge · OGraf Preview</h1><select id="template" aria-label="Template"></select><button id="play">In</button><button id="next">Next</button><button id="stop">Out</button><a id="download">Download ZIP</a></header>
+<main><section><div class="stage" id="stage"></div><p>Local preview with sample data. Download the ZIP for an EBU OGraf-compatible player.</p><small>The checkerboard shows transparency and is not part of the video output. The *_TEXT fields provide text alternatives to rasterized labels.</small></section><aside><label for="data">Sample data (JSON)</label><textarea id="data" spellcheck="false"></textarea><button id="update">Update data</button><p><a id="report">Conversion details</a></p></aside></main><div id="status" role="status">Loading…</div>
 <script type="module">
 const select=document.getElementById('template'),stage=document.getElementById('stage'),data=document.getElementById('data'),status=document.getElementById('status');
 let graphic,manifest,busy=false;
@@ -25,7 +25,7 @@ async function load(){
  document.getElementById('download').href=item.package;
  document.getElementById('report').href=base+'conversion.json';
  await graphic.playAction({goto:0,skipAnimation:true});
- status.textContent=`${item.name} · ${item.fieldCount} champs · ${item.stepCount} étape(s) · ${(item.bytes/1048576).toFixed(2)} Mio`;
+ status.textContent=`${item.name} · ${item.fieldCount} fields · ${item.stepCount} step(s) · ${(item.bytes/1048576).toFixed(2)} MiB`;
 }
 const report=await(await fetch('conversion-report.json')).json(),items=report.templates;
 for(const item of items){const option=document.createElement('option');option.value=item.slug;option.textContent=item.name;select.append(option)}

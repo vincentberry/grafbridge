@@ -17,7 +17,7 @@ const color = value => /^#[0-9a-f]{8}$/i.test(value) ? `#${value.slice(3)}${valu
 export async function loadStudio(studioRoot) {
     const root = path.resolve(studioRoot);
     const metadata = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
-    if (metadata.version !== '0.21.0') throw new Error(`Studio ${metadata.version} : adaptateur vérifié avec 0.21.0 uniquement.`);
+    if (metadata.version !== '0.21.0') throw new Error(`Studio ${metadata.version} : adapter verified with 0.21.0 only.`);
     const require = createRequire(path.join(root, 'package.json'));
     const module = file => import(pathToFileURL(path.join(root, file)).href);
     const model = await module('packages/scene-model/src/index.ts');
@@ -79,10 +79,10 @@ export function buildStudioProject(scene, manifest, files, studio) {
         if (!file) return null;
         if (assetByFile.has(file)) return assetByFile.get(file);
         const bytes = files.get(file);
-        if (!bytes) throw new Error(`Ressource Studio manquante : ${file}`);
+        if (!bytes) throw new Error(`Missing Studio resource : ${file}`);
         const ext = path.extname(file).slice(1);
         const mimeType = { webp: 'image/webp', png: 'image/png', otf: 'font/otf', ttf: 'font/ttf' }[ext];
-        if (!mimeType) throw new Error(`Ressource non prise en charge : ${file}`);
+        if (!mimeType) throw new Error(`Unsupported resource : ${file}`);
         const font = scene.fonts.find(font => font.file === file);
         const item = m.createAsset({ id: `asset-${hash(bytes).slice(0, 24)}`, name: path.basename(file),
             kind: font ? 'font' : 'image', mimeType, byteSize: bytes.length, packagePath: file,
@@ -144,7 +144,7 @@ export function buildStudioProject(scene, manifest, files, studio) {
     function maskFor(name) {
         if (!name) return null;
         const index = scene.nodes.findIndex(n => n.name === name);
-        if (index < 0) throw new Error(`Masque GT absent : ${name}`);
+        if (index < 0) throw new Error(`Missing GT mask : ${name}`);
         if (maskLayers.has(index)) return { sourceLayerId: maskLayers.get(index).id, mode: 'alpha', inverted: false };
         const node = scene.nodes[index];
         const image = asset(samples[boundaries[1]][index].image);
@@ -155,7 +155,7 @@ export function buildStudioProject(scene, manifest, files, studio) {
         layer.mask = clipLayer(index, layer.id, maskFor(node.mask), true);
         layers.push(layer);
         if ((node.frames?.length || 0) > 1) warnings.push({ type: 'masque-sequence', node: name,
-            detail: "Studio ne prend pas les séquences comme sources de masque alpha : masque éditable fixé à l'image de la première étape." });
+            detail: "Studio does not support sequences as alpha masks: the editable mask uses the first step frame." });
         return { sourceLayerId: layer.id, mode: 'alpha', inverted: false };
     }
     function textElement(node, fallback = false) {
@@ -179,14 +179,14 @@ export function buildStudioProject(scene, manifest, files, studio) {
             kind = 'image-sequence';
             element = { frames: samples.slice(0, boundaries[1] + 1).map(sample => `asset:${asset(sample[index].image).id}`), fps: FPS, loop: false };
             warnings.push({ type: 'sequence-sortie', node: node.name,
-                detail: "Images d'entrée échantillonnées à 50 i/s ; lecture selon l'horloge de contenu Studio (démarrage au chargement). La sortie image par image GT est remplacée par un fondu. Contrôler les reprises et la synchronisation avant réexport." });
+                detail: "Entrance frames sampled at 50 fps using the Studio content clock (starts on load). Frame-by-frame GT exit is replaced by a fade. Review replay and timing before re-export." });
         } else {
             element = { src: original ? `asset:${original.id}` : null };
             if ((node.frames?.length || 0) > 1) warnings.push({ type: 'sequence-dynamique', node: node.name,
-                detail: "La séquence liée à un champ image est importée comme image éditable de la première étape ; les images source restent dans les ressources." });
+                detail: "An image-field sequence is imported as an editable first-step image; source frames remain in the assets." });
         }
         const layer = newLayer(`gt-${index}`, node.name, kind, element);
-        layer.semantics.description = `Source vMix : ${node.name}`;
+        layer.semantics.description = `vMix source: ${node.name}`;
         const poses = samples.map((_, frame) => transform(index, frame));
         if (kind === 'image-sequence') {
             const from = boundaries.at(-2), to = boundaries.at(-1);
@@ -199,7 +199,7 @@ export function buildStudioProject(scene, manifest, files, studio) {
         layers.push(layer);
         if (node.type === 'Image' && node.sizeMode && !['Fit', 'Centered'].includes(node.sizeMode)) {
             warnings.push({ type: 'ajustement-image', node: node.name,
-                detail: `Le mode GT ${node.sizeMode} devient un ajustement proportionnel Studio ; contrôler les dimensions des images de remplacement.` });
+                detail: `GT mode ${node.sizeMode} becomes a proportional Studio fit; review replacement image dimensions.` });
         }
         if (node.textField) {
             const text = newLayer(`text-${index}`, `${node.name} · texte`, 'text', textElement(node, true));
@@ -209,14 +209,14 @@ export function buildStudioProject(scene, manifest, files, studio) {
             layers.push(text);
             if (scene.defaults[node.textField]) layer.isVisible = false;
             warnings.push({ type: 'texte-image', node: node.name,
-                detail: "Texte et image sont des calques séparés : masquer l'image dans Studio si un texte de remplacement est utilisé." });
+                detail: "Text and image are separate layers: hide the image in Studio when using replacement text." });
         }
     }
     const visibility = fields.filter(field => field.type === 'boolean');
     if (visibility.length) warnings.push({ type: 'visibilite', fields: visibility.map(field => field.key),
-        detail: 'Visibilités initiales conservées dans les pistes ; Studio ne lie pas les champs booléens à la visibilité des calques. Ajuster la visibilité et les pistes d’opacité avant réexport.' });
+        detail: 'Initial visibility is preserved in tracks; Studio does not bind boolean fields to layer visibility. Adjust visibility and opacity tracks before re-export.' });
     if (scene.boards.some(board => board.type.startsWith('DataChange'))) warnings.push({ type: 'data-change',
-        detail: 'Les storyboards GT DataChange ne sont pas importés dans la timeline Studio ; les champs restent éditables.' });
+        detail: 'GT DataChange storyboards are not imported into the Studio timeline; fields remain editable.' });
     const keyframes = boundaries.map((_, index) => m.createKeyframe({ id: `state-${index}`,
         name: !index ? 'Start' : index === boundaries.length - 1 ? 'End' : `Step ${index}`,
         role: !index ? 'start' : index === boundaries.length - 1 ? 'end' : 'step' }));
@@ -225,7 +225,7 @@ export function buildStudioProject(scene, manifest, files, studio) {
         transitions: keyframes.slice(1).map((key, index) => m.createTransition(keyframes[index].id, key.id,
             { id: `transition-${index}`, durationFrames: boundaries[index + 1] - boundaries[index], easing: 'linear' })) });
     const project = m.createProject({ id: manifest.id, name: manifest.name, version: PACKAGE_VERSION,
-        description: `${manifest.description}. Source éditable adaptée à Studio ; voir STUDIO-IMPORT.md pour les écarts de rendu et d'animation.`,
+        description: `${manifest.description}. Editable source adapted for Studio; see STUDIO-IMPORT.md for rendering and animation differences.`,
         author: { name: '' }, supportsRealTime: true, supportsNonRealTime: false,
         thumbnailFrame: boundaries[1], mainCompositionId: composition.id, compositions: [composition] });
     const validation = studio.validation.validateProject(project);
@@ -235,7 +235,7 @@ export function buildStudioProject(scene, manifest, files, studio) {
 
 export async function addStudioSources(input, output, studioRoot) {
     input = path.resolve(input); output = buildPath(output, 'studio');
-    if (input === output) throw new Error('Utiliser un dossier de préparation distinct pour préserver le lot original.');
+    if (input === output) throw new Error('Use a distinct output folder to preserve the original batch.');
     const studio = await loadStudio(studioRoot);
     const report = JSON.parse(await fs.readFile(path.join(input, 'conversion-report.json'), 'utf8'));
     const count = report.templates.length;
@@ -252,7 +252,7 @@ export async function addStudioSources(input, output, studioRoot) {
         const scene = JSON.parse(files.get('scene.json'));
         const built = buildStudioProject(scene, manifest, files, studio);
         const projectName = `${item.slug}.ogs`;
-        const notice = `# Source éditable OGraf Studio\n\nApplication : GrafBridge 0.1.0\n\nOuvrir ${projectName} avec File → Open dans Studio 0.21, ou importer ce ZIP avec File → Import OGraf.\nSe placer sur Step 1 pour examiner le graphisme affiché ; Start correspond à son entrée.\nLe lecteur graphic.mjs conserve le rendu GT de diffusion. Le projet Studio est une adaptation éditable ; son réexport utilise le moteur Studio.\nTextes, images, champs et polices sont embarqués. Le moteur de texte Studio peut modifier les retours à la ligne et les métriques.\n\n## Adaptations à contrôler avant réexport\n\n${built.warnings.map(w => `- ${w.node ? `${w.node} : ` : ''}${w.detail}`).join('\n')}\n\nConsulter les licences des polices avant redistribution.\n`;
+        const notice = `# Editable OGraf Studio source\n\nApplication: GrafBridge 0.1.1\n\nOpen ${projectName} with File → Open in Studio 0.21, or import this ZIP with File → Import OGraf. Use Step 1 to inspect the visible graphic; Start is its entrance.\nThe embedded graphic.mjs keeps the GT rendering engine. Editable Studio exports use Studio's own rendering engine and may change text metrics and wrapping.\n\n## Review before re-export\n\n${built.warnings.map(w => `- ${w.node ? `${w.node}: ` : ''}${w.detail}`).join('\n')}\n\nReview font licenses before redistribution.\n`;
         manifest.version = PACKAGE_VERSION;
         files.set(manifestName, Buffer.from(encode(manifest)));
         files.set(projectName, Buffer.from(encode(built.project)));
@@ -291,22 +291,22 @@ export async function addStudioSources(input, output, studioRoot) {
     }
     report.packageVersion = PACKAGE_VERSION;
     await fs.writeFile(path.join(output, 'conversion-report.json'), encode(report));
-    await fs.writeFile(path.join(output, 'studio-import-report.json'), encode({ application: 'GrafBridge', applicationVersion: '0.1.0', packageVersion: PACKAGE_VERSION,
+    await fs.writeFile(path.join(output, 'studio-import-report.json'), encode({ application: 'GrafBridge', applicationVersion: '0.1.1', packageVersion: PACKAGE_VERSION,
         studioVersion: studio.version, checkedAt: new Date().toISOString(), templates: results }));
     await fs.copyFile(path.join(input, 'index.html'), path.join(output, 'index.html'));
     const inputReadme = await fs.readFile(path.join(input, 'README.md'), 'utf8').catch(error => {
         if (error.code !== 'ENOENT') throw error;
         return `# Lot OGraf\n\n${count} packages convertis ; voir conversion-report.json et sources/<modèle>/README.md.`;
     });
-    const readme = inputReadme.split('\n## Édition dans OGraf Studio\n')[0]
+    const readme = inputReadme.split('\n## Editing in OGraf Studio\n')[0]
         .replace(/version de package \*\*[^*]+\*\*/, `version de package **${PACKAGE_VERSION}**`)
         .trimEnd();
-    await fs.writeFile(path.join(output, 'README.md'), `${readme}\n\n## Édition dans OGraf Studio\n\nLes ${count} projets autonomes sont dans studio/<modèle>.ogs. Utiliser File → Open et se placer sur Step 1 pour voir le graphisme affiché. Chaque ZIP contient aussi sa source .ogs, reconnue par File → Import OGraf dans Studio 0.21.\n\nLes calques, champs et polices sont éditables. Cette source adapte les scènes GT au moteur Studio : voir sources/<modèle>/STUDIO-IMPORT.md pour les limites des séquences, masques, visibilités et textes. Contrôler le résultat avant réexport. Le lecteur GT de diffusion contenu dans les ZIP reste inchangé.\n\nstudio-import-report.json décrit les conversions ; studio-validation-report.json contient les tests d'import et de réexport.\nDocumentation : README.md dans le dépôt GrafBridge.\n`);
+    await fs.writeFile(path.join(output, 'README.md'), `${readme}\n\n## Editing in OGraf Studio\n\nThe ${count} standalone projects are in studio/<template>.ogs. Open them with File → Open and use Step 1 to inspect the visible graphic. Each ZIP also includes its .ogs source for File → Import OGraf in Studio 0.21.\nLayers, fields and fonts are editable. Review sources/<template>/STUDIO-IMPORT.md for rendering limitations before re-export.\nSee studio-import-report.json for adaptation details and README.md in the GrafBridge repository for usage.\n`);
     return results;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
     const [input, output, studioRoot] = process.argv.slice(2);
-    if (!input || !output || !studioRoot) throw new Error('Arguments : <lot OGRAF> <préparation> <sources Studio 0.21 avec dépendances>.');
+    if (!input || !output || !studioRoot) throw new Error('Arguments: <OGRAF batch> <output> <Studio 0.21 sources with dependencies>.');
     await addStudioSources(input, output, studioRoot);
 }

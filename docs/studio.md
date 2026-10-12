@@ -1,9 +1,9 @@
-# Sources éditables pour OGraf Studio
+# Editable OGraf Studio sources
 
-Fonction avancée optionnelle : elle nécessite un checkout externe de Studio 0.21.0 avec ses dépendances installées. Le convertisseur et l’interface GrafBridge fonctionnent sans Studio.
+This optional adapter requires an external Studio 0.21.0 checkout with its dependencies installed. GrafBridge's converter and desktop UI run independently of Studio.
 
 ```powershell
-node --import 'D:/OGraf-Studio/node_modules/tsx/dist/loader.mjs' source/add-studio-source.mjs build/converted 'D:/OGraf-Studio'
+node --import 'D:/OGraf-Studio/node_modules/tsx/dist/loader.mjs' source/add-studio-source.mjs build/converted build/studio 'D:/OGraf-Studio'
 ```
 
-L’adaptateur vérifie exactement la version 0.21.0 et ajoute les fichiers `.ogs` sans remplacer le moteur de diffusion GT. Son utilisation avec une autre version demande une nouvelle validation. Les sources éditables gardent les limites du moteur Studio, notamment pour les modes Normal, Stretch et TopRight ; consulter les avertissements générés.
+The adapter verifies Studio version 0.21.0 and adds `.ogs` files without replacing the embedded GT rendering engine. Other Studio versions require separate validation. Editable sources retain Studio's rendering limitations, particularly for Normal, Stretch and TopRight image modes. Review generated warnings before re-exporting.

@@ -88,7 +88,7 @@ class ImageSizeModesTest(unittest.TestCase):
                                  str(self.root), str(output), "--fonts", str(self.root)],
                                 capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("sous-dossier", result.stderr)
+        self.assertIn("subdirectory", result.stderr)
         self.assertFalse(output.exists())
 
     def rectangle_title(self):

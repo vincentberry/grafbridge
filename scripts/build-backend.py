@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 root = Path(__file__).resolve().parent.parent
-command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir',
+command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile',
            '--name', 'grafbridge-backend', '--distpath', str(root / 'build/backend'),
            '--workpath', str(root / 'build/pyinstaller'), '--specpath', str(root / 'build'),
            '--hidden-import', 'PIL.Image', '--hidden-import', 'PIL._webp']

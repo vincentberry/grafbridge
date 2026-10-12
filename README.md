@@ -1,30 +1,38 @@
 <p align="center"><img src="web/logo.svg" width="80" alt="GrafBridge"></p>
 <h1 align="center">GrafBridge</h1>
-<p align="center">Du titre à l’écran, en toute liberté.<br>Application Electron de conversion vMix GT → EBU OGraf.</p>
+<p align="center">From title to screen, without boundaries.<br>An Electron desktop app for vMix GT → EBU OGraf conversion.</p>
 
-GrafBridge transforme les titres `.gtzip` en packages `.ograf.zip` autonomes. Une fenêtre desktop permet d’importer les titres, choisir les polices, convertir les animations, consulter les avertissements et tester le résultat. Les fichiers originaux sont lus sans modification. Le moteur de conversion et les ressources sont locaux ; aucun compte ni service cloud n’est requis.
+GrafBridge turns `.gtzip` titles into standalone `.ograf.zip` packages. Import your titles, select fonts, convert animations, review warnings and preview the result in a desktop window. Original files are read without modification. Everything runs locally; no account or cloud service is required.
 
-## Installer
+## Download and install
 
-Les releases Windows fournissent un **installateur** et un **exécutable portable**, avec le moteur Python embarqué. Il n’est pas nécessaire d’installer Python ou Node.js pour les utiliser. Les exécutables ne sont pas signés.
+Windows builds include an **installer** and a **portable executable**, with Python and Pillow embedded. You do not need to install Python or Node.js. Executables are currently unsigned.
 
-Ouvrir GrafBridge, déposer des fichiers `.gtzip` ou cliquer sur **Choisir** pour sélectionner un dossier. Choisir un titre ou tout le lot, puis lancer la conversion. **Ouvrir les aperçus** affiche la galerie dans une fenêtre de l’application : commandes In / Next / Out, données JSON modifiables et téléchargement des ZIP.
+Open GrafBridge, drop `.gtzip` files or click **Browse** to choose a titles folder. Select one title or the entire batch, then click **Convert to OGraf**. **Open previews** opens an application window with In / Next / Out controls, editable JSON data and ZIP downloads.
 
-Les conversions sont conservées dans le dossier de données de GrafBridge (`%APPDATA%/GrafBridge/build/` pour la distribution Windows). Chaque lot reçoit son propre dossier ; les conversions terminées sont retrouvées au redémarrage. L’application ne remplace pas les titres d’origine.
+Results are saved in GrafBridge's application data folder (`%APPDATA%/grafbridge/build/` on Windows). Every conversion has its own folder, and completed conversions are restored when you reopen the app. Original titles are never overwritten.
 
-## Polices et formats
+## Fonts
 
-**Barlow** est fournie avec sa licence OFL. Pour une autre famille, fournir `Famille-Regular.ttf` et éventuellement `Famille-Bold.ttf` (ou `.otf`) dans le dossier des polices. Remplacer les espaces de la famille par des tirets dans le nom de fichier, par exemple `Example-Sans-Regular.ttf` pour « Example Sans ». Ajouter `Famille-LICENSE.txt` si disponible. Les droits sur les ressources originales doivent être conservés pour toute redistribution.
+**Barlow** is included with its OFL license. Other families need their font files in the selected **Font folder**:
 
-Nœuds pris en charge : Layer, Image, TextBlock, Rectangle. Animations : Fade, Hidden, None, ImageSequence, Reveal, Fly. Modes d’image : Normal, Stretch, Centered, TopRight. Les types et effets inconnus sont refusés explicitement. Les projets After Effects `.mogrt` ne sont pas convertis. Les adaptations de rendu sont décrites dans le `conversion.json` du package.
+- `Family-Regular.ttf` or `Family-Regular.otf` is required.
+- `Family-Bold.ttf` or `Family-Bold.otf` is optional.
+- Add `Family-LICENSE.txt` if available.
 
-Les transferts acceptent 256 Mio par titre. Le profil de sortie limite chaque package à 32 Mio compressés, 128 Mio décompressés et 512 ressources. La galerie sert à vérifier le rendu ; elle ne mesure pas la cadence finale d’une sortie vidéo.
+Replace spaces in family names with hyphens in filenames, for example `Example-Sans-Regular.ttf` for **Example Sans**. GrafBridge checks the selected titles before conversion and lists missing font families and expected filenames. Choose the correct folder and scan again to enable conversion. Conversion does not grant redistribution rights to the original fonts or artwork.
 
-Un titre de démonstration original est fourni dans `examples/GrafBridge.gtzip`.
+## Supported formats and limits
 
-## Développer
+Nodes: Layer, Image, TextBlock and Rectangle. Animations: Fade, Hidden, None, ImageSequence, Reveal and Fly. Image sizing: Normal, Stretch, Centered and TopRight. Unknown types and effects are rejected explicitly. After Effects `.mogrt` projects are not converted. Rendering adaptations are documented in each package's `conversion.json`.
 
-Prérequis : Python 3.11 ou plus récent et Node.js 24.
+Uploads support up to 256 MiB per title. Each output package is limited to 32 MiB compressed, 128 MiB uncompressed and 512 resources. The preview helps you inspect rendering; it does not measure the frame rate of a final video output.
+
+An original demo title is included in `examples/GrafBridge.gtzip`.
+
+## Development
+
+Requirements: Python 3.11 or newer and Node.js 24.
 
 ```powershell
 python -m venv .venv
@@ -33,9 +41,9 @@ npm ci
 npm start
 ```
 
-Sous Windows, `start.bat` prépare les dépendances et lance Electron. Sur Linux et macOS, remplacer le chemin Python par `.venv/bin/python`. Les distributions automatiques ciblent actuellement Windows x64 ; le lancement depuis les sources reste possible sur les autres systèmes.
+On Windows, `start.bat` prepares dependencies and launches Electron. On Linux and macOS, use `.venv/bin/python` instead. Automated distributions currently target Windows x64; other platforms can run from source.
 
-Electron lance le moteur local sur un port aléatoire, conserve les résultats dans son dossier de données et arrête le moteur à la fermeture. Les sélecteurs de dossiers sont natifs ; les aperçus s’ouvrent dans une fenêtre isolée, sans accès Node.js. `npm run start:web` permet aussi de tester l’interface dans un navigateur pendant le développement.
+Electron starts a local backend on a random loopback port. Native dialogs select folders, and previews open in isolated windows without Node.js access. `npm run start:web` also runs the UI in a browser for development.
 
 ```powershell
 & .venv/Scripts/python.exe source/test-convert-vmix-gt.py
@@ -43,39 +51,42 @@ Electron lance le moteur local sur un port aléatoire, conserve les résultats d
 node --test source/build-paths.test.cjs
 ```
 
-La CI exécute ces tests sur Windows et Linux. Les tests de jonctions sont ignorés si le volume Windows ne les prend pas en charge.
+CI runs these tests on Windows and Linux. Junction tests are skipped when the Windows volume does not support them.
 
-## Construire et publier une release
+## Build and release
 
 ```powershell
 & .venv/Scripts/python.exe -m pip install -r requirements-build.txt
 & .venv/Scripts/python.exe scripts/build-backend.py
+& .venv/Scripts/python.exe scripts/test-embedded.py build/backend/grafbridge-backend.exe
 npm run dist:win
 ```
 
-Les exécutables sont produits dans `build/releases/`. Le workflow **Release desktop** teste le code, embarque Python et Pillow, construit l’installateur et la version portable, teste le démarrage de l’application et calcule leurs empreintes SHA-256. Un lancement manuel produit les artefacts sans publication.
+Outputs are written to `build/releases/`. The backend is a self-contained executable, including Python's standard library, fonts and web assets. It does not depend on an adjacent `_internal` folder. Every conversion starts with a fresh PyInstaller environment.
 
-Pour publier : mettre à jour la version de `package.json` et du lockfile, committer, puis pousser un tag correspondant (par exemple `v0.1.0` pour `0.1.0`). Le workflow vérifie la concordance du tag et de la version avant de publier les exécutables dans GitHub Releases.
+The **Release desktop** workflow tests the code, verifies a relocated standalone backend and two conversion subprocesses, builds the installer and portable version, checks desktop startup and writes SHA-256 checksums. Manual runs upload build artifacts without publishing a release.
+
+To publish a release, update `package.json` and its lockfile, commit, then push a matching version tag. The workflow checks tag/version agreement before publishing binaries to GitHub Releases.
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-## Outils avancés
+## Command-line tools
 
 ```powershell
-& .venv/Scripts/python.exe source/convert-vmix-gt.py 'D:/Titres' build/converted --fonts 'D:/Polices'
+& .venv/Scripts/python.exe source/convert-vmix-gt.py 'D:/Titles' build/converted --fonts 'D:/Fonts'
 & .venv/Scripts/python.exe source/verify-packages.py build/converted
 ```
 
-Les sorties et le cache CLI doivent être des sous-dossiers distincts de `build/`, hors du dossier source. `--title TITRE.gtzip` convertit un seul titre. `--workers` accepte 1 à 16. Le vérificateur contrôle les empreintes ZIP et toutes les ressources sans exécuter les graphismes.
+Output and cache folders must be distinct subdirectories of `build/`, outside the source folder. `--title TITLE.gtzip` converts a single title. `--workers` accepts 1–16. The package verifier checks ZIP hashes and every generated resource without executing graphic code.
 
-Le contrôle officiel des schémas EBU nécessite Internet et les dépendances optionnelles :
+Official EBU schema validation requires Internet access and optional dependencies:
 
 ```sh
 npm ci --prefix schema-validation --ignore-scripts
 node source/validate-manifests.cjs build/converted
 ```
 
-L’adaptateur [OGraf Studio](docs/studio.md) ajoute des sources éditables pour un checkout externe de Studio 0.21.0. Il n’est pas requis par GrafBridge.
+The optional [OGraf Studio adapter](docs/studio.md) adds editable sources for an external Studio 0.21.0 checkout. GrafBridge does not require Studio.

@@ -16,7 +16,7 @@ const dataColor = value => typeof value === 'string' && /^#[0-9a-f]{6}(?:[0-9a-f
 const ease = (value, type) => type === 'CubicEasingIn' ? value ** 3 : type === 'CubicEasingOut' ? 1 - (1 - value) ** 3 : value;
 const imageUrl = file => {
     const resolved = new URL(file, import.meta.url);
-    if (!['http:', 'https:', 'data:', 'blob:'].includes(resolved.protocol) || (resolved.protocol === 'data:' && !file.startsWith('data:image/'))) throw new Error(`Source image invalide : ${file}`);
+    if (!['http:', 'https:', 'data:', 'blob:'].includes(resolved.protocol) || (resolved.protocol === 'data:' && !file.startsWith('data:image/'))) throw new Error(`Invalid image source : ${file}`);
     return resolved.href;
 };
 
@@ -49,7 +49,7 @@ export default class ConvertedGtGraphic extends HTMLElement {
 
     async load({ data = {}, renderCharacteristics = {} } = {}) {
         const response = await fetch(url('scene.json'));
-        if (!response.ok) throw new Error('Scène OGraf introuvable.');
+        if (!response.ok) throw new Error('OGraf scene not found.');
         this.scene = await response.json();
         this.values = { ...this.scene.defaults, ...data };
         this.frameRate = Math.max(50, Math.min(120, renderCharacteristics.frameRate || 50));
@@ -97,7 +97,7 @@ export default class ConvertedGtGraphic extends HTMLElement {
         this.masks = new Map();
         for (const name of maskNames) {
             const index = this.byName.get(name);
-            if (index === undefined) throw new Error(`Masque absent : ${name}`);
+            if (index === undefined) throw new Error(`Missing mask : ${name}`);
             const mask = this.make('mask', { id: this.idPrefix + 'mask-' + index, maskUnits: 'userSpaceOnUse', x: 0, y: 0,
                 width: this.scene.width, height: this.scene.height, style: 'mask-type:alpha' });
             this.defs.append(mask);
@@ -119,7 +119,7 @@ export default class ConvertedGtGraphic extends HTMLElement {
             while (pending.length && !this.closed) {
                 const asset = pending.pop();
                 const result = await fetch(url(asset));
-                if (!result.ok) throw new Error(`Ressource OGraf absente : ${asset}`);
+                if (!result.ok) throw new Error(`Missing OGraf resource : ${asset}`);
                 const blob = await result.blob();
                 if (!this.closed) this.assetUrls.set(asset, URL.createObjectURL(blob));
             }
@@ -135,9 +135,9 @@ export default class ConvertedGtGraphic extends HTMLElement {
                 const response = await fetch(source + '/sequence.json');
                 if (response.status === 404) frames = [source]; // Lecteur autonome sans extension locale.
                 else {
-                    if (!response.ok) throw new Error('Séquence image locale indisponible.');
+                    if (!response.ok) throw new Error('Local image sequence unavailable.');
                     ({ frames } = await response.json());
-                    if (!Array.isArray(frames) || !frames.length || frames.length > 1000 || frames.some(frame => typeof frame !== 'string' || !frame.startsWith(location.origin + '/media/'))) throw new Error('Séquence image locale invalide.');
+                    if (!Array.isArray(frames) || !frames.length || frames.length > 1000 || frames.some(frame => typeof frame !== 'string' || !frame.startsWith(location.origin + '/media/'))) throw new Error('Invalid local image sequence.');
                 }
             }
             sequences.set(source, frames);
