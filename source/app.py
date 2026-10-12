@@ -14,7 +14,7 @@ import uuid
 import webbrowser
 
 ROOT = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
-BUILD = Path(os.environ.get('GRAFBRIDGE_DATA_ROOT', str(ROOT))) / "build"
+BUILD = (Path(os.environ.get('GRAFBRIDGE_DATA_ROOT', str(ROOT))) / "build").resolve()
 WEB = ROOT / "web"
 TOKEN = secrets.token_urlsafe(32)
 JOBS = {}

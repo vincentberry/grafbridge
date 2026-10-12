@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import tempfile
 import subprocess
@@ -18,6 +19,21 @@ spec.loader.exec_module(converter)
 
 
 class ImageSizeModesTest(unittest.TestCase):
+    def test_cli_accepts_an_aliased_application_data_root(self):
+        source = self.title([''])
+        input_folder = self.root / 'input'
+        input_folder.mkdir()
+        source.replace(input_folder / source.name)
+        data_root = self.root / 'app-data'
+        (data_root / 'nested').mkdir(parents=True)
+        output = data_root / 'build/converted'
+        result = subprocess.run([sys.executable, str(converter.HERE / 'convert-vmix-gt.py'),
+                                 str(input_folder), str(output), '--fonts', str(self.root)],
+                                env=os.environ | {'GRAFBRIDGE_DATA_ROOT': str(data_root / 'nested' / '..')},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((output / 'conversion-report.json').is_file())
+
     def test_custom_font_is_embedded_without_parent_project(self):
         font = converter.HERE.parent / 'fonts/Barlow-Regular.ttf'
         (self.root / 'Example-Sans-Regular.ttf').write_bytes(font.read_bytes())

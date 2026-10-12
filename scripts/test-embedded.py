@@ -50,6 +50,12 @@ with tempfile.TemporaryDirectory(prefix='GrafBridge embedded test ') as director
         process.wait(timeout=30)
     finally:
         if process.poll() is None:
+            try:
+                post('/api/shutdown', {})
+                process.wait(timeout=30)
+            except Exception:
+                pass
+        if process.poll() is None:
             if sys.platform == 'win32':
                 subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True)
             else:

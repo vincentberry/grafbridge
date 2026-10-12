@@ -19,7 +19,7 @@ import zipfile
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
-BUILD_ROOT = Path(os.environ.get("GRAFBRIDGE_DATA_ROOT", str(HERE.parent))) / "build"
+BUILD_ROOT = (Path(os.environ.get("GRAFBRIDGE_DATA_ROOT", str(HERE.parent))) / "build").resolve()
 RUNTIME = HERE / "gt-runtime.mjs"
 SCHEMA = "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json"
 PACKAGE_VERSION = "1.0.3"
@@ -404,7 +404,7 @@ def main(argv=None):
         parser.error("No .gtzip titles to convert.")
     if len({slug(p.stem) for p in titles}) != len(titles):
         parser.error("Package names collide.")
-    report = {"application": "GrafBridge", "applicationVersion": "0.1.1", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
+    report = {"application": "GrafBridge", "applicationVersion": "0.1.2", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
     for source in titles:
         report["templates"].append(convert(source, args.output, args.fonts, args.barlow, args.cache, args.workers))
     for source in sorted(args.source.glob("MODELE/*.mogrt")):
