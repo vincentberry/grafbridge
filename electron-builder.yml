@@ -1,0 +1,28 @@
+appId: com.grafbridge.desktop
+productName: GrafBridge
+directories:
+  output: build/releases
+files:
+  - electron/**
+  - web/icon.png
+  - web/icon.ico
+  - package.json
+extraResources:
+  - from: build/backend/grafbridge-backend
+    to: backend
+win:
+  icon: web/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: GrafBridge-${version}-${arch}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+portable:
+  artifactName: GrafBridge-${version}-portable.${ext}

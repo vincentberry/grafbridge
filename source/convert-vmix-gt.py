@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""GrafBridge : convertit des titres vMix GT en packages OGraf autonomes (Pillow requis).
+
+Les sources sont ouvertes en lecture seule. Le convertisseur est volontairement
+strict sur les types de nœuds/animations ; ce n'est pas un lecteur GT universel.
+"""
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import unicodedata
+import xml.etree.ElementTree as ET
+import zipfile
+
+from PIL import Image
+
+HERE = Path(__file__).resolve().parent
+BUILD_ROOT = Path(os.environ.get("GRAFBRIDGE_DATA_ROOT", str(HERE.parent))) / "build"
+RUNTIME = HERE / "gt-runtime.mjs"
+SCHEMA = "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json"
+PACKAGE_VERSION = "1.0.3"
+RENDER_ENGINE = "grafbridge-gt-svg-1"
+NODE_TYPES = {"Layer", "Image", "TextBlock", "Rectangle"}
+ANIMATIONS = {"Fade", "Hidden", "None", "ImageSequence", "Reveal", "Fly"}
+IMAGE_SIZE_MODES = {"Normal", "Stretch", "Centered", "TopRight"}
+
+
+def dump(value):
+    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+
+
+def package_readme(manifest, warnings):
+    missing_license = any(w["type"] == "licence-police-absente" for w in warnings)
+    font_notice = ("Un texte de licence de police n'a pas été fourni ; aucune licence de redistribution n'est ajoutée par cette conversion."
+                   if missing_license else "Les textes de licence de polices disponibles sont conservés dans fonts/.")
+    return f"""# {manifest['name']}
+
+Version du package : {manifest['version']} · créé avec GrafBridge.
+
+## Utilisation
+
+Importer l'archive .ograf.zip dans un lecteur EBU OGraf v1. Le manifeste est le fichier
+se terminant par .ograf.json ; son module principal est graphic.mjs. Conserver toutes
+les ressources du package ensemble. Le lecteur enregistre lui-même le Web Component.
+Rendu temps réel : 1920 × 1080, cadence idéale 50 images/s, ressources locales.
+
+Ouvrir la galerie locale pour prévisualiser les animations et les données.
+Le ZIP peut ensuite être importé dans un lecteur compatible OGraf.
+defaults.json contient les valeurs initiales ; example.json contient des données fictives.
+Les champs *_TEXT remplacent les noms rasterisés. Pour les images, utiliser une ressource
+du package ou une image data:image/ ; les chemins Windows vMix ne sont pas des URL web.
+
+## Commandes
+
+- load({{ data }}) prépare le graphisme masqué et charge ses ressources.
+- playAction({{}}) avance d'une étape ; les {manifest['stepCount']} étape(s) sont indexées à partir de 0.
+- playAction({{ goto: 0 }}) revient à l'entrée ; delta permet un déplacement relatif.
+- Au-delà de la dernière étape, playAction masque le graphisme et retourne currentStep: undefined.
+- updateAction({{ data }}) accepte une mise à jour partielle ; stopAction({{}}) joue la sortie.
+- skipAnimation: true permet une action immédiate, sans transition animée.
+- customAction retourne 404 : aucune action personnalisée n'est déclarée.
+- dispose({{}}) libère les ressources. Attendre la Promise de chaque commande.
+
+## Ressources et limites
+
+Voir conversion.json pour les références GT manquantes et les adaptations de rendu.
+{font_notice}
+La licence de Barlow, lorsque cette police est utilisée, se trouve dans fonts/Barlow-OFL.txt.
+La conversion n'attribue pas de licence globale aux créations, logos et autres ressources du titre original.
+
+Spécification : https://ograf.ebu.io/v1/specification/docs/Specification.html
+"""
+
+
+def slug(value):
+    value = value.replace("+", "-plus-")
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def numbers(value, default):
+    return [float(n) for n in value.split(",")] if value else default
+
+
+def css_color(value):
+    """Convertit la notation GT #AARRGGBB vers la notation CSS #RRGGBBAA."""
+    return f"#{value[3:]}{value[1:3]}" if re.fullmatch(r"#[0-9a-fA-F]{8}", value or "") else value
+
+
+def data_field_name(value):
+    """Retire le suffixe de propriété vMix d'un nom de donnée storyboard."""
+    if value.endswith(".Fill.Color"):
+        return value[:-len(".Fill.Color")]
+    return value.rsplit(".", 1)[0]
+
+
+def restore_hidden_defaults(boards):
+    """Rétablit les objets Hidden lorsque le storyboard suivant ne les vise pas.
+
+    Les storyboards GT sont indépendants. Le lecteur conserve leurs poses entre
+    commandes ; None explicite donc le retour à l'opacité initiale, notamment
+    pour un calque parent dont seuls les enfants sont animés sur une page.
+    """
+    hidden = {a["object"] for board in boards for a in board["animations"] if a["type"] == "Hidden"}
+    restored = 0
+    for board in boards:
+        targets = {a["object"] for a in board["animations"]}
+        for object_id in sorted(hidden - targets):
+            board["animations"].append({"type": "None", "object": object_id, "delay": 0, "duration": 0,
+                                        "reverse": False, "direction": "Left", "centerAxis": "Both", "easing": "Linear"})
+            restored += 1
+    return restored
+
+
+def read_xml(archive, name):
+    # GT écrit parfois une déclaration UTF-16 dans un fichier réellement UTF-8.
+    raw = archive.read(name)
+    return ET.fromstring(raw.decode("utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"))
+
+
+def example_data(scene):
+    """Données fictives pour la prévisualisation, distinctes des valeurs importées."""
+    data = dict(scene["defaults"])
+    for key in data:
+        if key.endswith("_TEXT"):
+            data[key] = "Votre texte"
+
+    return data
+
+
+def encode_image(task):
+    key, raw, animated, cache = task
+    cached = cache / (key + ".webp")
+    if not cached.exists():
+        with Image.open(BytesIO(raw)) as source:
+            image = source.convert("RGBA")
+            # Les longues séquences HD dépassent 32 Mio en PNG / WebP sans perte.
+            # WebP qualité 100 pour la couleur, canal alpha sans perte ; les
+            # images fixes (logos, textes rasterisés) restent sans perte.
+            image.save(cached, "WEBP", lossless=not animated, quality=100, method=4)
+    with Image.open(cached) as image:
+        size = image.size
+    return key, cached, size
+
+
+def convert(source, output, fonts, barlow, cache, workers):
+    name = source.stem
+    identifier = slug(name)
+    destination = output / "sources" / identifier
+    destination.mkdir(parents=True, exist_ok=True)
+    files = {}
+    warnings = []
+    properties = {}
+    defaults = {}
+    nodes = []
+    resources = {}
+    bitmap_jobs = {}
+
+    def field(key, title, value, kind="string", description=None):
+        if key in properties:
+            raise ValueError(f"Champ dupliqué : {key}")
+        properties[key] = {"type": kind, "title": title, "default": value}
+        if description:
+            properties[key]["description"] = description
+        defaults[key] = value
+        return key
+
+    with zipfile.ZipFile(source) as archive:
+        composition = read_xml(archive, "document.xml")
+        for resource in read_xml(archive, "resources.xml"):
+            sequence = []
+            for item in resource:
+                raw = archive.read(item.attrib["guid"])
+                animated = len(resource) > 1
+                key = hashlib.sha256(raw + (b"sequence-q100" if animated else b"lossless")).hexdigest()
+                bitmap_jobs[key] = (key, raw, animated, cache)
+                sequence.append("assets/" + key + ".webp")
+            resources[resource.attrib["filename"]] = sequence
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            encoded = dict((key, (file, size)) for key, file, size in executor.map(encode_image, bitmap_jobs.values()))
+        for key, (file, _) in encoded.items():
+            files["assets/" + key + ".webp"] = file.read_bytes()
+
+        def walk(composition, parent=None):
+            for element in composition:
+                if element.tag == "Storyboard":
+                    continue
+                if element.tag not in NODE_TYPES:
+                    raise ValueError(f"Type GT non pris en charge : {element.tag}")
+                a = element.attrib
+                node = {"type": element.tag, "name": a["Name"], "parent": parent,
+                        "position": numbers(a.get("Location"), [0, 0, 0])[:2],
+                        # Une image GT sans Dimensions conserve sa zone de
+                        # 100 x 100 ; elle ne prend pas la taille du bitmap.
+                        "size": numbers(a.get("Dimensions"), [100, 100, 0] if element.tag == "Image" else [0, 0, 0])[:2],
+                        "opacity": float(a.get("Opacity", 1)), "visible": a.get("Visible") != "False"}
+                node_id = len(nodes)
+                nodes.append(node)
+                mask = element.find(f"{element.tag}.Mask/Mask")
+                if mask is not None:
+                    node["mask"] = mask.attrib["Object"]
+                crop = element.find(f"{element.tag}.Crop/Crop")
+                if crop is not None:
+                    node["crop"] = numbers(crop.get("Range"), [0, 0, 1, 1])
+                    if any(numbers(crop.get("Feather"), [0, 0, 0, 0])):
+                        raise ValueError("Le lissage des bords GT doit être adapté manuellement.")
+                for effect in element.findall(".//Effect"):
+                    if effect.attrib != {"Type": "Skew", "Angle": "0,0"}:
+                        raise ValueError(f"Effet GT non pris en charge : {effect.attrib}")
+                fill = element.find(f"{element.tag}.Fill/Brush")
+                node["fill"] = fill.get("Color", "#FFFFFFFF") if fill is not None else "#FFFFFFFF"
+                if element.tag == "Layer":
+                    child = element.find("Layer.Composition/Composition")
+                    if child is not None:
+                        walk(child, node_id)
+                elif element.tag == "Image":
+                    node["dimensionsExplicit"] = "Dimensions" in a
+                    bitmap = element.find("Image.Bitmap/Bitmap")
+                    path = bitmap.get("Source", "") if bitmap is not None else ""
+                    node["frames"] = resources.get(path, [])
+                    node["positionInSequence"] = float(bitmap.get("Position", 0)) if bitmap is not None else 0
+                    # GT omet l'attribut pour son mode par défaut Centered.
+                    node["sizeMode"] = a.get("SizeMode", "Centered")
+                    if node["sizeMode"] not in IMAGE_SIZE_MODES:
+                        raise ValueError(f"Mode de dimensionnement GT non pris en charge : {node['name']} ({node['sizeMode']})")
+                    if node["frames"]:
+                        key = Path(node["frames"][0]).stem
+                        node["imageSize"] = encoded[key][1]
+                    elif path:
+                        warnings.append({"type": "source-absente", "object": node["name"], "source": path,
+                                         "detail": "Image externe non embarquée dans le GT ; champ image à renseigner."})
+                    if a.get("DataFlags") != "Hidden":
+                        node["field"] = field(node["name"], node["name"] + " · image", "", description="Ressource du package ou image data:image. Vide : image d'origine, si disponible.")
+                        if re.fullmatch(r"(?:(?:T[12]_)?SYN|REF|AS[123]|COMM[12]|T[12][PS]\d+)_IMG", node["name"]):
+                            key = node["name"][:-4] + "_TEXT"
+                            node["textField"] = field(key, key + " · texte", "", description="Alternative au nom rasterisé ; le texte non vide remplace l'image.")
+                            node["textSize"] = min(38, round(node["size"][1] * 0.65))
+                            node["textAlign"] = "Left" if re.match(r"T[12][PS]\d+", node["name"]) else "Center"
+                elif element.tag == "TextBlock":
+                    node.update({"text": a.get("Text", ""), "font": a.get("FontFamily", "Barlow"),
+                                 "fontSize": float(a.get("FontSize", 24)), "weight": a.get("FontWeight", "Normal"),
+                                 "align": a.get("TextAlign", "Left"), "vertical": a.get("VerticalAlign", "Top"),
+                                 "wrap": a.get("TextWordWrapping") != "NoWrap", "uppercase": a.get("TextEffect") == "Uppercase",
+                                 "shrink": a.get("AutoSize") == "Shrink", "lineSpacing": float(a.get("LineSpacing", 1.15))})
+                    if a.get("DataFlags") != "Hidden":
+                        node["field"] = field(node["name"], node["name"], node["text"])
+                elif element.tag == "Rectangle" and a.get("DataFlags") == "None":
+                    # Dans les titres GT, un rectangle explicitement exposé avec
+                    # DataFlags=None est pilotable par vMix via SetColor. Les
+                    # rectangles techniques sans attribut (masques, caches) restent
+                    # statiques et ne polluent pas le schéma de données OGraf.
+                    default_color = css_color(node["fill"])
+                    node["colorField"] = field(
+                        node["name"], node["name"] + " · couleur", default_color,
+                        description="Couleur de remplissage au format #RRGGBB ou #RRGGBBAA.",
+                    )
+                    properties[node["colorField"]].update({
+                        "format": "color",
+                        "pattern": "^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$",
+                    })
+                if element.tag == "Layer" or a.get("DataFlags") == "ShowVisible" or not node["visible"]:
+                    node["visibilityField"] = field(node["name"] + "_VISIBLE", node["name"] + " · visible", node["visible"], "boolean")
+        walk(composition)
+        names = [n["name"] for n in nodes]
+        if len(set(names)) != len(names):
+            raise ValueError("Des noms d'objets GT ne sont pas uniques.")
+        for node in nodes:
+            if node.get("mask") and node["mask"] not in names:
+                warnings.append({"type": "masque-absent", "object": node["name"], "mask": node.pop("mask"),
+                                 "detail": "Référence GT orpheline : masque ignoré, objet conservé."})
+        boards = []
+        for board in composition.findall("Storyboard"):
+            animations = []
+            for animation in board.find("Storyboard.Animations"):
+                if animation.tag not in ANIMATIONS:
+                    raise ValueError(f"Animation GT non prise en charge : {animation.tag}")
+                a = animation.attrib
+                if a["Object"] not in names:
+                    warnings.append({"type": "animation-sans-objet", "object": a["Object"]})
+                    continue
+                animations.append({"type": animation.tag, "object": names.index(a["Object"]),
+                                   "delay": float(a.get("Delay", 0)), "duration": float(a.get("Duration", 1)),
+                                   "reverse": a.get("Reverse") == "True", "direction": a.get("Direction", "Left"),
+                                   "centerAxis": a.get("CenterAxis", "Both"), "easing": a.get("Interpolation", "Linear")})
+            boards.append({"type": board.get("Type", "TransitionIn"), "field": data_field_name(board.get("DataName", "")), "animations": animations})
+        hidden_defaults = restore_hidden_defaults(boards)
+        scene = {"name": name, "width": int(composition.get("Width")), "height": int(composition.get("Height")),
+                 "nodes": nodes, "boards": boards, "defaults": defaults, "fonts": []}
+        used_fonts = {n["font"] for n in nodes if n.get("font")}
+        if any("textField" in n for n in nodes):
+            used_fonts.add("Barlow")
+        for family in sorted(used_fonts):
+            if family == "Barlow":
+                folder = barlow or HERE.parent / "fonts"
+                candidates = [(400, folder / "Barlow-Regular.ttf")]
+                license_file = folder / "Barlow-OFL.txt"
+            else:
+                stem = family.replace(" ", "-")
+                if any(c in stem for c in '/\\:') or stem in {"", ".", ".."}:
+                    raise ValueError(f"Nom de police invalide : {family}")
+                candidates = []
+                for weight, suffix in [(400, "Regular"), (700, "Bold")]:
+                    candidate = next((fonts / f"{stem}-{suffix}{ext}" for ext in [".otf", ".ttf"]
+                                      if (fonts / f"{stem}-{suffix}{ext}").is_file()), None)
+                    if candidate:
+                        candidates.append((weight, candidate))
+                if not any(weight == 400 for weight, _ in candidates):
+                    raise ValueError(f"Police {family} absente : fournir {stem}-Regular.otf ou .ttf dans --fonts.")
+                license_file = fonts / f"{stem}-LICENSE.txt"
+            for weight, candidate in candidates:
+                if not candidate.is_file():
+                    raise ValueError(f"Police introuvable : {candidate}")
+                filename = "fonts/" + candidate.name
+                files[filename] = candidate.read_bytes()
+                scene["fonts"].append({"family": family, "weight": weight, "file": filename})
+            if license_file.is_file():
+                files["fonts/" + license_file.name] = license_file.read_bytes()
+            else:
+                warnings.append({"type": "licence-police-absente", "detail": f"Texte de licence {family} non fourni : {license_file.name}."})
+        if any(n.get("weight") == "ExtraBold" for n in nodes):
+            warnings.append({"type": "graisse", "detail": "ExtraBold rendu avec la police Bold fournie, ou une graisse de substitution du navigateur."})
+        steps = 1 + max([int(b["type"][4:]) for b in boards if b["type"].startswith("Page")] or [0])
+        manifest = {"$schema": SCHEMA, "id": "com.grafbridge.gt." + identifier,
+                    "name": name, "version": PACKAGE_VERSION, "main": "graphic.mjs",
+                    "description": "Adaptation web du titre vMix " + source.name,
+                    "supportsRealTime": True, "supportsNonRealTime": False, "stepCount": steps,
+                    "schema": {"type": "object", "properties": properties},
+                    "renderRequirements": [{"resolution": {"width": {"ideal": scene["width"]}, "height": {"ideal": scene["height"]}},
+                                            "frameRate": {"ideal": 50}, "accessToPublicInternet": {"exact": False}}],
+                    "thumbnails": [{"file": "thumbnail.png"}],
+                    "v_conversion": {"source": source.name, "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                                     "engine": RENDER_ENGINE, "defaultAnimationDurationSeconds": 1}}
+        files[identifier + ".ograf.json"] = dump(manifest).encode()
+        files["scene.json"] = dump(scene).encode()
+        files["graphic.mjs"] = RUNTIME.read_bytes()
+        files["README.md"] = package_readme(manifest, warnings).encode()
+        files["thumbnail.png"] = archive.read("thumbnail.png")
+        files["defaults.json"] = dump(defaults).encode()
+        files["example.json"] = dump(example_data(scene)).encode()
+        files["conversion.json"] = dump({"source": source.name, "warnings": warnings,
+                                          "hiddenStoryboardDefaults": {"restored": hidden_defaults,
+                                                                       "detail": "Objets Hidden rétablis par None dans les storyboards qui ne les ciblent pas ; visibilités déclarées conservées."},
+                                          "imageDimensions": "Zone de 100 x 100 pixels si Dimensions est absent d'une image GT ; dimensions explicites conservées.",
+                                          "imageEncoding": "Séquences WebP qualité 100 (couleur avec perte, alpha sans perte), images fixes sans perte.",
+                                          "textFallback": "Champs *_TEXT ajoutés pour remplacer les noms rasterisés.",
+                                          "defaultDuration": "1 seconde si absente de l'XML GT ; réglable dans scene.json."}).encode()
+    for filename, content in files.items():
+        target = destination / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    package = output / (identifier + ".ograf.zip")
+    temporary = package.with_suffix(".zip.tmp")
+    with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for filename, content in sorted(files.items()):
+            archive.writestr(filename, content)
+    if len(files) > 512 or sum(map(len, files.values())) > 128 * 1024**2 or temporary.stat().st_size > 32 * 1024**2:
+        raise ValueError(f"Package hors limites d'import : {temporary}")
+    temporary.replace(package)
+    result = {"source": str(source), "sourceSha256": manifest["v_conversion"]["sha256"], "name": name, "slug": identifier,
+              "package": package.name, "version": PACKAGE_VERSION, "bytes": package.stat().st_size, "sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+              "stepCount": steps, "fieldCount": len(properties), "files": len(files), "warnings": warnings}
+    print(f"{name}: {result['bytes'] / 1024**2:.2f} Mio, {len(properties)} champs, {steps} étape(s)", flush=True)
+    return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path)
+    parser.add_argument("output", type=Path, nargs="?", default=BUILD_ROOT / "converted",
+                        help="Sous-dossier de build/ (défaut : build/converted).")
+    parser.add_argument("--fonts", type=Path, default=HERE.parent / "fonts", help="Dossier des polices du titre.")
+    parser.add_argument("--barlow", type=Path, default=HERE.parent / "fonts")
+    parser.add_argument("--cache", type=Path, default=BUILD_ROOT / "cache",
+                        help="Sous-dossier de build/ (défaut : build/cache).")
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--title", help="Nom exact d'un titre .gtzip à convertir, au lieu du lot complet.")
+    args = parser.parse_args(argv)
+    for name in ("output", "cache"):
+        target = getattr(args, name).resolve()
+        if not target.is_relative_to(BUILD_ROOT) or target == BUILD_ROOT:
+            parser.error(f"{name} doit être un sous-dossier de {BUILD_ROOT}.")
+        setattr(args, name, target)
+    if args.output == args.cache or args.output in args.cache.parents or args.cache in args.output.parents:
+        parser.error("Les dossiers output et cache doivent être distincts et non imbriqués.")
+    if args.source.resolve().is_relative_to(args.output) or args.source.resolve().is_relative_to(args.cache):
+        parser.error("Les sorties ne doivent pas contenir le dossier source.")
+    if not 1 <= args.workers <= 16:
+        parser.error("--workers doit être compris entre 1 et 16.")
+    if args.source.resolve() == args.output or args.source.resolve() in args.output.parents or args.source.resolve() == args.cache or args.source.resolve() in args.cache.parents:
+        parser.error("Les sorties ne doivent pas être situées dans le dossier source.")
+    args.output.mkdir(parents=True, exist_ok=True)
+    args.cache.mkdir(parents=True, exist_ok=True)
+    if args.title:
+        if re.search(r"[\\/]", args.title) or Path(args.title).name != args.title or not args.title.lower().endswith(".gtzip"):
+            parser.error("--title doit être un nom de fichier .gtzip situé dans le dossier source.")
+        titles = [args.source / args.title]
+        if not titles[0].is_file():
+            parser.error("Titre --title introuvable dans le dossier source.")
+    else:
+        titles = sorted(p for p in args.source.iterdir() if p.is_file() and p.suffix.lower() == ".gtzip")
+    if not titles:
+        parser.error("Aucun titre .gtzip à convertir.")
+    if len({slug(p.stem) for p in titles}) != len(titles):
+        parser.error("Collision de noms de packages.")
+    report = {"application": "GrafBridge", "applicationVersion": "0.1.0", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
+    for source in titles:
+        report["templates"].append(convert(source, args.output, args.fonts, args.barlow, args.cache, args.workers))
+    for source in sorted(args.source.glob("MODELE/*.mogrt")):
+        with zipfile.ZipFile(source) as archive:
+            definition = json.loads(archive.read("definition.json"))
+        report["adobeSources"].append({"source": str(source), "authorApp": definition.get("authorApp"),
+                                       "status": "Non converti : projet After Effects, distinct du format GT. Les titres GT correspondants sont fournis."})
+    (args.output / "conversion-report.json").write_text(dump(report), encoding="utf-8")
+    shutil.copyfile(HERE / "preview.html", args.output / "index.html")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>GrafBridge · Aperçu OGraf</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10151d;color:#f0f4fb;font:15px system-ui}header{padding:22px 30px;background:#1b2330;display:flex;align-items:center;gap:16px;flex-wrap:wrap}h1{font-size:21px;margin:0}button,select,a{font:inherit}button,select{background:#28374b;color:white;border:1px solid #4a5e79;border-radius:7px;padding:9px 14px}button{cursor:pointer}button:hover{background:#365578}main{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px}.stage{width:100%;aspect-ratio:16/9;position:relative;background-color:#222a34;background-image:linear-gradient(45deg,#303945 25%,transparent 25%),linear-gradient(-45deg,#303945 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#303945 75%),linear-gradient(-45deg,transparent 75%,#303945 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.stage>div{position:absolute;inset:0}.stage>*{width:100%;height:100%}textarea{width:100%;height:420px;resize:vertical;color:#dfe9fb;background:#171f2b;border:1px solid #40506a;padding:14px;font:12px/1.5 monospace}a{color:#91c8ff}#status{padding:0 24px 20px;color:#b6c6df}p{line-height:1.5}small{color:#afbbcc}@media(max-width:950px){main{grid-template-columns:1fr}}
+</style>
+<header><h1>GrafBridge · Aperçu OGraf</h1><select id="template" aria-label="Modèle"></select><button id="play">In</button><button id="next">Next</button><button id="stop">Out</button><a id="download">Télécharger le ZIP</a></header>
+<main><section><div class="stage" id="stage"></div><p>Prévisualisation locale avec des données fictives. Télécharger le ZIP pour l’utiliser dans un lecteur compatible EBU OGraf.</p><small>Les carreaux montrent la transparence ; ils ne font pas partie de la sortie vidéo. Les champs *_TEXT remplacent les noms fournis auparavant sous forme d’images.</small></section><aside><label for="data">Données de démonstration (JSON)</label><textarea id="data" spellcheck="false"></textarea><button id="update">Mettre à jour</button><p><a id="report">Détails de conversion</a></p></aside></main><div id="status" role="status">Chargement…</div>
+<script type="module">
+const select=document.getElementById('template'),stage=document.getElementById('stage'),data=document.getElementById('data'),status=document.getElementById('status');
+let graphic,manifest,busy=false;
+const setBusy=value=>{busy=value;document.body.dataset.busy=String(value);select.disabled=value;document.querySelectorAll('button').forEach(button=>button.disabled=value)};
+const action=async(fn)=>{if(busy)return;setBusy(true);try{await fn()}catch(error){status.textContent=error.message;console.error(error)}finally{setBusy(false)}};
+async function load(){
+ if(graphic)await graphic.dispose();stage.replaceChildren();
+ const item=items.find(item=>item.slug===select.value),base=`sources/${item.slug}/`;
+ manifest=await(await fetch(base+item.slug+'.ograf.json')).json();
+ const {default:Graphic}=await import('./'+base+'graphic.mjs');
+ const tag='grafbridge-'+item.slug;if(!customElements.get(tag))customElements.define(tag,Graphic);
+ graphic=document.createElement(tag);stage.append(graphic);
+ data.value=JSON.stringify(await(await fetch(base+'example.json')).json(),null,2);
+ await graphic.load({data:JSON.parse(data.value),renderType:'realtime'});
+ document.getElementById('download').href=item.package;
+ document.getElementById('report').href=base+'conversion.json';
+ await graphic.playAction({goto:0,skipAnimation:true});
+ status.textContent=`${item.name} · ${item.fieldCount} champs · ${item.stepCount} étape(s) · ${(item.bytes/1048576).toFixed(2)} Mio`;
+}
+const report=await(await fetch('conversion-report.json')).json(),items=report.templates;
+for(const item of items){const option=document.createElement('option');option.value=item.slug;option.textContent=item.name;select.append(option)}
+select.onchange=()=>action(load);document.getElementById('play').onclick=()=>action(()=>graphic.playAction({goto:0}));
+document.getElementById('next').onclick=()=>action(async()=>{const next=graphic.activeStep+1;if(next>=manifest.stepCount)await graphic.stopAction();else await graphic.playAction({goto:next})});
+document.getElementById('stop').onclick=()=>action(()=>graphic.stopAction());document.getElementById('update').onclick=()=>action(()=>graphic.updateAction({data:JSON.parse(data.value)}));
+await action(load);
+</script>
+</html>

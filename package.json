@@ -1,0 +1,24 @@
+{
+  "name": "grafbridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local vMix GT to EBU OGraf converter",
+  "scripts": {
+    "start": "electron .",
+    "test": "python source/test-convert-vmix-gt.py && python source/test-app.py && node --test source/build-paths.test.cjs",
+    "start:web": "node source/launch.cjs",
+    "dist:win": "electron-builder --win --publish never",
+    "build:backend": "python scripts/build-backend.py"
+  },
+  "main": "electron/main.cjs",
+  "author": "GrafBridge",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vincentberry/grafbridge.git"
+  }
+}

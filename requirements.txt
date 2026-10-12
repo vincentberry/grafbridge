@@ -1,0 +1,2 @@
+# Dépendance du convertisseur et de ses tests, validée sur ce poste.
+Pillow==12.3.0
