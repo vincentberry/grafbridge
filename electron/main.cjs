@@ -86,6 +86,9 @@ else {
           try {
             const valid = await mainWindow.webContents.executeJavaScript("document.title.includes('GrafBridge') && !!document.getElementById('convert') && typeof window.grafbridge?.selectDirectory === 'function' && !document.getElementById('browse-source').hidden");
             if (!valid) throw new Error('The interface did not load.');
+            const uiChecks = fs.readFileSync(path.join(root, 'electron/ui-checks.js'), 'utf8');
+            await mainWindow.webContents.executeJavaScript(uiChecks);
+            await mainWindow.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
             const image = await mainWindow.webContents.capturePage();
             const screenshotRoot = app.isPackaged ? app.getPath('userData') : path.join(root, 'build');
             fs.mkdirSync(screenshotRoot, { recursive: true });

@@ -104,6 +104,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(job['status'], 'done', job.get('log'))
         with self.request(job['preview']) as response:
             self.assertIn('GrafBridge', response.read().decode())
+        for asset in ['style.css', 'logo.svg', 'Barlow-Regular.ttf']:
+            with self.request(f'/build/jobs/{identifier}/ui/{asset}') as response:
+                self.assertTrue(response.read())
         package = job['report']['templates'][0]['package']
         with self.request(f'/build/jobs/{identifier}/{package}') as response:
             with zipfile.ZipFile(BytesIO(response.read())) as archive:

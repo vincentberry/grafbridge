@@ -3,6 +3,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import secrets
@@ -122,6 +123,10 @@ class Handler(SimpleHTTPRequestHandler):
             target = (BUILD / route.removeprefix('/build/')).resolve()
             allowed = (BUILD / "jobs").resolve()
             if not target.is_relative_to(allowed) or not target.is_file():
+                if target.is_relative_to(allowed) and target.parent.name == 'ui' and target.name in {'style.css', 'logo.svg', 'Barlow-Regular.ttf'}:
+                    self.directory = str(WEB)
+                    self.path = '/' + target.name
+                    return super().do_GET()
                 return self.send_error(404)
             if target.name == 'index.html':
                 body = (ROOT / 'source/preview.html').read_bytes()
@@ -190,7 +195,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with LOCK:
                     if any(job["status"] in {"queued", "running"} for job in JOBS.values()):
                         return self.respond({"error": "A conversion is already running."}, 409)
-                    JOBS[identifier] = {"id": identifier, "status": "queued", "log": "", "name": title or f"Batch of {len(available)} titles"}
+                    JOBS[identifier] = {"id": identifier, "status": "queued", "log": "", "createdAt": datetime.now(timezone.utc).isoformat(), "name": title or f"Batch of {len(available)} titles"}
                 POOL.submit(run_job, identifier, source, data.get("fonts", ""), title)
                 return self.respond({"id": identifier}, 202)
             return self.respond({"error": "Unknown route."}, 404)
@@ -207,6 +212,7 @@ def main():
         identifier = report.parent.name
         try:
             JOBS[identifier] = {"id": identifier, "name": "Saved conversion", "status": "done", "log": "",
+                                "createdAt": datetime.fromtimestamp(report.stat().st_mtime, timezone.utc).isoformat(),
                                 "report": json.loads(report.read_text(encoding='utf-8')),
                                 "preview": f"/build/jobs/{identifier}/index.html"}
         except (OSError, ValueError):

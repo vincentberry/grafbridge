@@ -1,18 +1,19 @@
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8">
-<title>GrafBridge · OGraf Preview</title>
-<link rel="icon" href="data:,">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GrafBridge — OGraf Preview</title><link rel="icon" href="ui/logo.svg"><link rel="stylesheet" href="ui/style.css">
 <style>
-*{box-sizing:border-box}body{margin:0;background:#10151d;color:#f0f4fb;font:15px system-ui}header{padding:22px 30px;background:#1b2330;display:flex;align-items:center;gap:16px;flex-wrap:wrap}h1{font-size:21px;margin:0}button,select,a{font:inherit}button,select{background:#28374b;color:white;border:1px solid #4a5e79;border-radius:7px;padding:9px 14px}button{cursor:pointer}button{transition:background .18s,border-color .18s,transform .18s}button:not(:disabled):hover{background:#365578;border-color:#91c8ff;transform:translateY(-1px)}button:disabled{opacity:.5;cursor:not-allowed}button:focus-visible,a:focus-visible{outline:2px solid #91c8ff;outline-offset:3px}a:hover{color:white}main{padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px}.stage{width:100%;aspect-ratio:16/9;position:relative;background-color:#222a34;background-image:linear-gradient(45deg,#303945 25%,transparent 25%),linear-gradient(-45deg,#303945 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#303945 75%),linear-gradient(-45deg,transparent 75%,#303945 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.stage>div{position:absolute;inset:0}.stage>*{width:100%;height:100%}textarea{width:100%;height:420px;resize:vertical;color:#dfe9fb;background:#171f2b;border:1px solid #40506a;padding:14px;font:12px/1.5 monospace}a{color:#91c8ff}#status{padding:0 24px 20px;color:#b6c6df}p{line-height:1.5}small{color:#afbbcc}@media(max-width:950px){main{grid-template-columns:1fr}}
-</style>
-<header><h1>GrafBridge · OGraf Preview</h1><select id="template" aria-label="Template"></select><button id="play">In</button><button id="next">Next</button><button id="stop">Out</button><a id="download">Download ZIP</a></header>
-<main><section><div class="stage" id="stage"></div><p>Local preview with sample data. Download the ZIP for an EBU OGraf-compatible player.</p><small>The checkerboard shows transparency and is not part of the video output. The *_TEXT fields provide text alternatives to rasterized labels.</small></section><aside><label for="data">Sample data (JSON)</label><textarea id="data" spellcheck="false"></textarea><button id="update">Update data</button><p><a id="report">Conversion details</a></p></aside></main><div id="status" role="status">Loading…</div>
+.preview-sidebar .nav-label{margin-top:42px}.preview-sidebar label{color:#b5c1c5;margin-top:18px}.preview-sidebar select{background:#28353c;color:#e6ede7;border-color:#425148}.preview-sidebar select:focus{outline-color:#b9ef86}.preview-sidebar .sidebar-bottom{font-size:12px;line-height:1.7}.preview-main{margin-left:236px;padding:38px 34px;max-width:none}.preview-main h1{font-size:34px}.preview-main .heading{margin-bottom:25px}.preview-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px}.preview-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:18px}.preview-controls button{min-width:65px;min-height:40px;padding:10px 15px}.preview-controls .primary{width:auto;font-size:12px}.download-link{margin-left:auto;padding:11px 14px;border-radius:6px;background:#edf5e5;color:#526b3d;font-size:12px}.download-link:hover{background:#dbecc9;color:#2e4e1e}.stage{width:100%;aspect-ratio:16/9;position:relative;overflow:hidden;border:1px solid #e0e6da;border-radius:7px;background-color:#232c31;background-image:linear-gradient(45deg,#344044 25%,transparent 25%),linear-gradient(-45deg,#344044 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#344044 75%),linear-gradient(-45deg,transparent 75%,#344044 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.stage>*{position:absolute;inset:0;width:100%;height:100%}.preview-help{font-size:12px;color:#839076;line-height:1.6;margin:14px 0 0}.data-panel label{margin-bottom:12px}textarea{width:100%;min-height:350px;resize:vertical;background:#fafcf7;border:1px solid #dce3d6;border-radius:7px;color:#3c4c31;padding:13px;font:12px/1.7 Consolas,monospace}textarea:focus{outline:2px solid #aed382;outline-offset:2px}.data-panel button{margin-top:13px;min-height:42px;padding:11px 16px;width:100%}.report-link{display:inline-block;margin-top:15px;font-size:12px;color:#64824b}.report-link:hover{color:#365323;text-decoration:underline}.preview-status{margin-top:20px;font-size:12px;color:#6e7d61;line-height:1.7}.preview-status.error{color:#a23e30}@media(max-width:1100px){.preview-main{margin-left:195px;padding:28px 24px}.preview-grid{grid-template-columns:1fr}.data-panel textarea{min-height:230px}}@media(max-width:800px){.preview-sidebar{position:static;width:auto;display:block}.preview-sidebar .nav-label,.preview-sidebar .sidebar-bottom{display:none}.preview-sidebar select{margin-top:8px}.preview-main{margin:0;padding:24px 20px}.preview-main h1{font-size:29px}.download-link{margin-left:0}.preview-main .heading p{font-size:13px}}
+</style></head>
+<body>
+<aside class="sidebar preview-sidebar"><div class="brand"><img src="ui/logo.svg" alt=""><span>GrafBridge<small>OGRAF PREVIEW</small></span></div><div class="nav-label">YOUR PACKAGE</div><label for="template">Template</label><select id="template"></select><div class="sidebar-bottom"><span class="dot"></span> Preview locally<small>Original title data</small></div></aside>
+<main class="preview-main"><div class="heading"><div><div class="eyebrow">OGRAF PACKAGE</div><h1>Preview your graphic<span>.</span></h1><p>Test animations and edit the title’s data.</p></div></div>
+<div class="preview-grid"><section class="panel"><div class="panel-title"><h2>Graphic preview</h2><span class="tag" id="resolution">OGRAF</span></div><div class="preview-controls"><button class="primary" id="play">In</button><button class="secondary" id="next">Next</button><button class="secondary" id="stop">Out</button><a class="download-link" id="download" download>Download ZIP ↗</a></div><div class="stage" id="stage"></div><p class="preview-help">The checkerboard shows transparency and is not part of the output.</p><div class="preview-status" id="status" role="status" aria-live="polite">Loading…</div></section>
+<aside class="panel data-panel"><div class="panel-title"><h2>Title data</h2><span class="tag">JSON</span></div><label for="data">Editable data</label><textarea id="data" spellcheck="false"></textarea><button class="primary" id="update">Apply data →</button><a class="report-link" id="report" target="_blank" rel="noopener">Conversion details ↗</a></aside></div></main>
 <script type="module">
 const select=document.getElementById('template'),stage=document.getElementById('stage'),data=document.getElementById('data'),status=document.getElementById('status');
 let graphic,manifest,busy=false;
-const setBusy=value=>{busy=value;document.body.dataset.busy=String(value);select.disabled=value;document.querySelectorAll('button').forEach(button=>button.disabled=value)};
-const action=async(fn)=>{if(busy)return;setBusy(true);try{await fn()}catch(error){status.textContent=error.message;console.error(error)}finally{setBusy(false)}};
+const setBusy=value=>{busy=value;select.disabled=value;document.querySelectorAll('button').forEach(button=>button.disabled=value)};
+const action=async(fn)=>{if(busy)return;setBusy(true);try{status.classList.remove('error');await fn()}catch(error){status.textContent=error.message;status.classList.add('error');console.error(error)}finally{setBusy(false)}};
 async function load(){
  if(graphic)await graphic.dispose();stage.replaceChildren();
  const item=items.find(item=>item.slug===select.value),base=`sources/${item.slug}/`;
@@ -20,8 +21,10 @@ async function load(){
  const {default:Graphic}=await import('./'+base+'graphic.mjs');
  const tag='grafbridge-'+item.slug;if(!customElements.get(tag))customElements.define(tag,Graphic);
  graphic=document.createElement(tag);stage.append(graphic);
- data.value=JSON.stringify(await(await fetch(base+'example.json')).json(),null,2);
- await graphic.load({data:JSON.parse(data.value),renderType:'realtime'});
+ data.value=JSON.stringify(await(await fetch(base+'defaults.json')).json(),null,2);
+ await graphic.load({data:JSON.parse(data.value)});
+ const resolution=manifest.renderRequirements?.[0]?.resolution,width=resolution?.width?.ideal,height=resolution?.height?.ideal;
+ if(width>0&&height>0){stage.style.aspectRatio=`${width}/${height}`;document.getElementById('resolution').textContent=`${width} × ${height}`}
  document.getElementById('download').href=item.package;
  document.getElementById('report').href=base+'conversion.json';
  await graphic.playAction({goto:0,skipAnimation:true});
@@ -33,5 +36,4 @@ select.onchange=()=>action(load);document.getElementById('play').onclick=()=>act
 document.getElementById('next').onclick=()=>action(async()=>{const next=graphic.activeStep+1;if(next>=manifest.stepCount)await graphic.stopAction();else await graphic.playAction({goto:next})});
 document.getElementById('stop').onclick=()=>action(()=>graphic.stopAction());document.getElementById('update').onclick=()=>action(()=>graphic.updateAction({data:JSON.parse(data.value)}));
 await action(load);
-</script>
-</html>
+</script></body></html>

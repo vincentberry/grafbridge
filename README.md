@@ -2,7 +2,7 @@
 <h1 align="center">GrafBridge</h1>
 <p align="center">From title to screen, without boundaries.<br>An Electron desktop app for vMix GT → EBU OGraf conversion.</p>
 
-GrafBridge turns `.gtzip` titles into standalone `.ograf.zip` packages. Import your titles, select fonts, convert animations, review warnings and preview the result in a desktop window. Original files are read without modification. Everything runs locally; no account or cloud service is required.
+GrafBridge turns `.gtzip` titles into standalone `.ograf.zip` packages. Import your titles, select fonts, convert animations, review warnings and preview the result in a desktop window. The exported data schema uses the GT fields and their original values. No alternative text fields are generated for images. Original files are read without modification. Everything runs locally; no account or cloud service is required.
 
 ## Download and install
 
@@ -10,7 +10,7 @@ Windows builds include an **installer** and a **portable executable**, with Pyth
 
 Open GrafBridge, drop `.gtzip` files or click **Browse** to choose a titles folder. Select one title or the entire batch, then click **Convert to OGraf**. **Open previews** opens an application window with In / Next / Out controls, editable JSON data and ZIP downloads.
 
-Results are saved in GrafBridge's application data folder (`%APPDATA%/grafbridge/build/` on Windows). Every conversion has its own folder, and completed conversions are restored when you reopen the app. Original titles are never overwritten.
+The **History** view lists saved conversions and keeps warning panels open while background status updates run. Results are saved in GrafBridge's application data folder (`%APPDATA%/grafbridge/build/` on Windows). Every conversion has its own folder, and completed conversions are restored when you reopen the app. Original titles are never overwritten.
 
 ## Fonts
 
@@ -18,7 +18,7 @@ Results are saved in GrafBridge's application data folder (`%APPDATA%/grafbridge
 
 - `Family-Regular.ttf` or `Family-Regular.otf` is required.
 - `Family-Bold.ttf` or `Family-Bold.otf` is optional.
-- Add `Family-LICENSE.txt` if available.
+- Add `Family-LICENSE.txt` if available. Missing license text is listed as optional package documentation, separately from conversion warnings; it does not mean the font is missing.
 
 Replace spaces in family names with hyphens in filenames, for example `Example-Sans-Regular.ttf` for **Example Sans**. GrafBridge checks the selected titles before conversion and lists missing font families and expected filenames. Choose the correct folder and scan again to enable conversion. Conversion does not grant redistribution rights to the original fonts or artwork.
 
@@ -69,8 +69,8 @@ The **Release desktop** workflow tests the code, verifies a relocated standalone
 To publish a release, update `package.json` and its lockfile, commit, then push a matching version tag. The workflow checks tag/version agreement before publishing binaries to GitHub Releases.
 
 ```sh
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 ## Command-line tools
@@ -90,3 +90,5 @@ node source/validate-manifests.cjs build/converted
 ```
 
 The optional [OGraf Studio adapter](docs/studio.md) adds editable sources for an external Studio 0.21.0 checkout. GrafBridge does not require Studio.
+
+Packages made by an earlier GrafBridge version retain their original exported fields. Reconvert the original GT titles to remove any previously generated image-to-text alternatives.

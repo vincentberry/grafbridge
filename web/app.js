@@ -1,6 +1,24 @@
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="grafbridge-token"]').content;
 let activeJob, uploading = false, scanning = false, titleCount = 0, missingFonts = false;
+let historySignature = '';
+function showView(view) {
+  const historyView = view === 'history';
+  $('conversion-view').hidden = historyView;
+  $('history-view').hidden = !historyView;
+  for (const link of document.querySelectorAll('.nav[data-view]')) {
+    const active = link.dataset.view === (historyView ? 'history' : 'conversion');
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  }
+  window.history.replaceState(null, '', historyView ? '#history' : '#conversion');
+  window.scrollTo({top:0});
+}
+for (const link of document.querySelectorAll('.nav[data-view]')) {
+  link.onclick = event => { event.preventDefault(); showView(link.dataset.view); };
+}
+window.addEventListener('hashchange', () => showView(location.hash === '#history' ? 'history' : 'conversion'));
+showView(location.hash === '#history' ? 'history' : 'conversion');
 function syncConvert() { $('convert').disabled = !titleCount || missingFonts || !!activeJob || uploading || scanning; }
 function showFonts(requirements) {
   const box = $('font-status'); box.replaceChildren();
@@ -78,31 +96,62 @@ $('convert').onclick = async () => {
 };
 function resultCard(job) {
   const card = document.createElement('article'); card.className = 'result';
+  card.dataset.jobId = job.id;
   const image = document.createElement('img'); image.src = '/logo.svg'; image.alt = '';
   const info = document.createElement('div'), title = document.createElement('strong'), subtitle = document.createElement('small');
   const items = job.report.templates;
   title.textContent = items.length === 1 ? items[0].name : `${items.length} titles converted`;
   subtitle.textContent = `${(items.reduce((n, item) => n + item.bytes, 0) / 1048576).toFixed(1)} MiB · OGraf ZIP + animated preview`;
   info.append(title, subtitle); const link = document.createElement('a'); link.href = job.preview; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Open previews ↗'; card.append(image, info, link);
-  const warnings = items.flatMap(item => (item.warnings || []).map(warning => `${item.name} : ${warning.detail || warning.type}`));
+  const warnings = items.flatMap(item => (item.warnings || []).filter(warning => warning.type !== 'licence-police-absente').map(warning => `${item.name}: ${warning.detail || warning.type}`));
   if (warnings.length) {
-    const details = document.createElement('details'), summary = document.createElement('summary'), list = document.createElement('ul'); summary.textContent = `${warnings.length} warning(s) to review`;
+    const details = document.createElement('details'), summary = document.createElement('summary'), list = document.createElement('ul'); details.dataset.kind = 'warnings'; summary.textContent = `${warnings.length} warning(s) to review`;
     for (const warning of warnings) { const li = document.createElement('li'); li.textContent = warning; list.append(li); } details.append(summary, list); card.append(details);
   }
+  const missingLicenses = [...new Set(items.flatMap(item => (item.fontLicenses || []).filter(font => !font.included).map(font => font.family)))];
+  const legacyLicenseNote = items.some(item => (item.warnings || []).some(warning => warning.type === 'licence-police-absente'));
+  if (missingLicenses.length || legacyLicenseNote) {
+    const details = document.createElement('details'), summary = document.createElement('summary'), note = document.createElement('p');
+    details.className = 'license-note'; details.dataset.kind = 'licenses'; summary.textContent = 'Optional font license files';
+    note.textContent = 'The fonts are available and conversion succeeded. License text files were not included' + (missingLicenses.length ? ` for ${missingLicenses.join(', ')}` : '') + '. These are optional documentation files, not missing fonts.';
+    details.append(summary, note); card.append(details);
+  }
   return card;
+}
+function renderHistory(done) {
+  const signature = JSON.stringify(done.map(job => [job.id, job.report]));
+  if (signature === historySignature) return;
+  historySignature = signature;
+  if (!done.length) return;
+  const existing = new Map([...$('results').querySelectorAll('[data-job-id]')].map(card => [card.dataset.jobId, card]));
+  $('results').querySelector('.empty')?.remove();
+  for (let index = 0; index < done.length; index++) {
+    const job = done[index];
+    let card = existing.get(job.id);
+    const reportSignature = JSON.stringify(job.report);
+    if (!card || card.reportSignature !== reportSignature) {
+      const openPanels = new Set([...card?.querySelectorAll('details[open]') || []].map(panel => panel.dataset.kind));
+      const replacement = resultCard(job); replacement.reportSignature = reportSignature;
+      for (const panel of replacement.querySelectorAll('details')) panel.open = openPanels.has(panel.dataset.kind);
+      if (card) card.replaceWith(replacement); card = replacement;
+    }
+    if ($('results').children[index] !== card) $('results').insertBefore(card, $('results').children[index] || null);
+    existing.delete(job.id);
+  }
+  for (const obsolete of existing.values()) obsolete.remove();
 }
 async function refresh() {
   try {
     const response = await fetch('/api/jobs'); if (!response.ok) throw new Error('The local engine is unavailable.'); const jobs = await response.json();
     const ongoing = jobs.find(job => ['queued', 'running'].includes(job.status)); if (ongoing && !activeJob) activeJob = ongoing.id;
-    const done = jobs.filter(job => job.status === 'done').reverse(); $('history-count').textContent = done.length; $('total').textContent = `${done.length} conversion(s)`;
-    if (done.length) $('results').replaceChildren(...done.map(resultCard));
+    const done = jobs.filter(job => job.status === 'done').sort((a,b) => (b.createdAt || b.id).localeCompare(a.createdAt || a.id)); $('history-count').textContent = done.length; $('total').textContent = `${done.length} conversion(s)`;
+    renderHistory(done);
     const current = jobs.find(job => job.id === activeJob);
     if (current) {
       $('progress').hidden = false; $('log').textContent = current.log || 'Preparing resources…';
       $('progress-title').textContent = current.status === 'done' ? 'Conversion complete' : current.status === 'error' ? 'Conversion failed' : 'Converting';
       $('progress-state').textContent = {done: 'DONE', error: 'ERROR', queued: 'PREPARING', running: 'IN PROGRESS'}[current.status];
-      if (['done', 'error'].includes(current.status)) { message(current.error || 'Your packages are ready. Open a preview to test animations and download the ZIP files.', current.status === 'error'); activeJob = null; syncConvert(); }
+      if (['done', 'error'].includes(current.status)) { message(current.error || 'Your packages are ready. Open a preview to test animations and download the ZIP files.', current.status === 'error'); activeJob = null; syncConvert(); if (current.status === 'done') showView('history'); }
     }
     if (ongoing) $('convert').disabled = true;
   } catch (error) { message(`Connection interrupted: ${error.message}`, true); }

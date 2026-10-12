@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 BUILD_ROOT = (Path(os.environ.get("GRAFBRIDGE_DATA_ROOT", str(HERE.parent))) / "build").resolve()
 RUNTIME = HERE / "gt-runtime.mjs"
 SCHEMA = "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json"
-PACKAGE_VERSION = "1.0.3"
+PACKAGE_VERSION = "1.0.4"
 RENDER_ENGINE = "grafbridge-gt-svg-1"
 NODE_TYPES = {"Layer", "Image", "TextBlock", "Rectangle"}
 ANIMATIONS = {"Fade", "Hidden", "None", "ImageSequence", "Reveal", "Fly"}
@@ -33,9 +33,9 @@ def dump(value):
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
-def package_readme(manifest, warnings):
+def package_readme(manifest, font_licenses):
     notice = ("Some font license texts were not provided; conversion does not grant redistribution rights."
-              if any(w["type"] == "licence-police-absente" for w in warnings)
+              if any(not item['included'] for item in font_licenses)
               else "Available font license texts are included in fonts/.")
     resolution = manifest['renderRequirements'][0]['resolution']
     return f"""# {manifest['name']}
@@ -122,12 +122,7 @@ def read_xml(archive, name):
 
 def example_data(scene):
     """Données fictives pour la prévisualisation, distinctes des valeurs importées."""
-    data = dict(scene["defaults"])
-    for key in data:
-        if key.endswith("_TEXT"):
-            data[key] = "Your text"
-
-    return data
+    return dict(scene["defaults"])
 
 
 def encode_image(task):
@@ -152,6 +147,7 @@ def convert(source, output, fonts, barlow, cache, workers):
     destination.mkdir(parents=True, exist_ok=True)
     files = {}
     warnings = []
+    font_licenses = []
     properties = {}
     defaults = {}
     nodes = []
@@ -233,11 +229,6 @@ def convert(source, output, fonts, barlow, cache, workers):
                                          "detail": "External image not embedded in the title; provide an image field value."})
                     if a.get("DataFlags") != "Hidden":
                         node["field"] = field(node["name"], node["name"] + " · image", "", description="Package resource or data:image URL. Empty: original image, if available.")
-                        if re.fullmatch(r"(?:(?:T[12]_)?SYN|REF|AS[123]|COMM[12]|T[12][PS]\d+)_IMG", node["name"]):
-                            key = node["name"][:-4] + "_TEXT"
-                            node["textField"] = field(key, key + " · text", "", description="Alternative to a rasterized label; non-empty text replaces the image.")
-                            node["textSize"] = min(38, round(node["size"][1] * 0.65))
-                            node["textAlign"] = "Left" if re.match(r"T[12][PS]\d+", node["name"]) else "Center"
                 elif element.tag == "TextBlock":
                     node.update({"text": a.get("Text", ""), "font": a.get("FontFamily", "Barlow"),
                                  "fontSize": float(a.get("FontSize", 24)), "weight": a.get("FontWeight", "Normal"),
@@ -260,7 +251,7 @@ def convert(source, output, fonts, barlow, cache, workers):
                         "format": "color",
                         "pattern": "^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$",
                     })
-                if element.tag == "Layer" or a.get("DataFlags") == "ShowVisible" or not node["visible"]:
+                if a.get("DataFlags") == "ShowVisible":
                     node["visibilityField"] = field(node["name"] + "_VISIBLE", node["name"] + " · visible", node["visible"], "boolean")
         walk(composition)
         names = [n["name"] for n in nodes]
@@ -289,8 +280,6 @@ def convert(source, output, fonts, barlow, cache, workers):
         scene = {"name": name, "width": int(composition.get("Width")), "height": int(composition.get("Height")),
                  "nodes": nodes, "boards": boards, "defaults": defaults, "fonts": []}
         used_fonts = {n["font"] for n in nodes if n.get("font")}
-        if any("textField" in n for n in nodes):
-            used_fonts.add("Barlow")
         for family in sorted(used_fonts):
             if family == "Barlow":
                 folder = barlow or HERE.parent / "fonts"
@@ -317,8 +306,7 @@ def convert(source, output, fonts, barlow, cache, workers):
                 scene["fonts"].append({"family": family, "weight": weight, "file": filename})
             if license_file.is_file():
                 files["fonts/" + license_file.name] = license_file.read_bytes()
-            else:
-                warnings.append({"type": "licence-police-absente", "detail": f"Font license text not provided for {family} : {license_file.name}."})
+            font_licenses.append({'family': family, 'file': license_file.name, 'included': license_file.is_file()})
         if any(n.get("weight") == "ExtraBold" for n in nodes):
             warnings.append({"type": "graisse", "detail": "ExtraBold uses the supplied Bold font or a browser-generated weight."})
         steps = 1 + max([int(b["type"][4:]) for b in boards if b["type"].startswith("Page")] or [0])
@@ -335,16 +323,16 @@ def convert(source, output, fonts, barlow, cache, workers):
         files[identifier + ".ograf.json"] = dump(manifest).encode()
         files["scene.json"] = dump(scene).encode()
         files["graphic.mjs"] = RUNTIME.read_bytes()
-        files["README.md"] = package_readme(manifest, warnings).encode()
+        files["README.md"] = package_readme(manifest, font_licenses).encode()
         files["thumbnail.png"] = archive.read("thumbnail.png")
         files["defaults.json"] = dump(defaults).encode()
         files["example.json"] = dump(example_data(scene)).encode()
-        files["conversion.json"] = dump({"source": source.name, "warnings": warnings,
+        files["conversion.json"] = dump({"source": source.name, "warnings": warnings, "fontLicenses": font_licenses,
                                           "hiddenStoryboardDefaults": {"restored": hidden_defaults,
                                                                        "detail": "Hidden objects restored by None in storyboards that do not target them; declared visibility preserved."},
                                           "imageDimensions": "Images without Dimensions use a 100 x 100 pixel box; explicit dimensions are preserved.",
                                           "imageEncoding": "WebP sequences use quality 100 (lossy color, lossless alpha); still images are lossless.",
-                                          "textFallback": "*_TEXT fields provide text alternatives to rasterized labels.",
+                                          "dataFields": "GT data fields and initial values are preserved; no image-to-text alternatives are generated.",
                                           "defaultDuration": "Defaults to 1 second when missing from GT XML; adjustable in scene.json."}).encode()
     for filename, content in files.items():
         target = destination / filename
@@ -360,7 +348,7 @@ def convert(source, output, fonts, barlow, cache, workers):
     temporary.replace(package)
     result = {"source": str(source), "sourceSha256": manifest["v_conversion"]["sha256"], "name": name, "slug": identifier,
               "package": package.name, "version": PACKAGE_VERSION, "bytes": package.stat().st_size, "sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
-              "stepCount": steps, "fieldCount": len(properties), "files": len(files), "warnings": warnings}
+              "stepCount": steps, "fieldCount": len(properties), "files": len(files), "warnings": warnings, "fontLicenses": font_licenses}
     print(f"{name}: {result['bytes'] / 1024**2:.2f} MiB, {len(properties)} fields, {steps} step(s)", flush=True)
     return result
 
@@ -404,7 +392,7 @@ def main(argv=None):
         parser.error("No .gtzip titles to convert.")
     if len({slug(p.stem) for p in titles}) != len(titles):
         parser.error("Package names collide.")
-    report = {"application": "GrafBridge", "applicationVersion": "0.1.3", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
+    report = {"application": "GrafBridge", "applicationVersion": "0.1.4", "packageVersion": PACKAGE_VERSION, "templates": [], "adobeSources": []}
     for source in titles:
         report["templates"].append(convert(source, args.output, args.fonts, args.barlow, args.cache, args.workers))
     for source in sorted(args.source.glob("MODELE/*.mogrt")):
@@ -414,6 +402,12 @@ def main(argv=None):
                                        "status": "Not converted: After Effects projects are a different format from GT."})
     (args.output / "conversion-report.json").write_text(dump(report), encoding="utf-8")
     shutil.copyfile(HERE / "preview.html", args.output / "index.html")
+    ui = args.output / 'ui'
+    ui.mkdir(exist_ok=True)
+    for asset in ['logo.svg', 'Barlow-Regular.ttf']:
+        shutil.copyfile(HERE.parent / 'web' / asset, ui / asset)
+    stylesheet = (HERE.parent / 'web/style.css').read_text(encoding='utf-8')
+    (ui / 'style.css').write_text(stylesheet.replace("url('/Barlow-Regular.ttf')", "url('Barlow-Regular.ttf')"), encoding='utf-8')
 
 
 if __name__ == "__main__":

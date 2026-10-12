@@ -19,6 +19,43 @@ spec.loader.exec_module(converter)
 
 
 class ImageSizeModesTest(unittest.TestCase):
+    def test_image_field_does_not_generate_text_or_visibility_fields(self):
+        source = self.title([''], layer=True)
+        with zipfile.ZipFile(source) as archive:
+            files = {name: archive.read(name) for name in archive.namelist()}
+        files['document.xml'] = files['document.xml'].replace(b'IMAGE_0', b'T1P6_IMG')
+        with zipfile.ZipFile(source, 'w') as archive:
+            for name, content in files.items():
+                archive.writestr(name, content)
+        original = source.read_bytes()
+        result = converter.convert(source, self.root / 'output', self.root, None, self.cache, 1)
+        with zipfile.ZipFile(self.root / 'output/test.ograf.zip') as archive:
+            manifest = json.loads(archive.read('test.ograf.json'))
+            scene = json.loads(archive.read('scene.json'))
+            self.assertEqual(set(manifest['schema']['properties']), {'T1P6_IMG'})
+            self.assertEqual(json.loads(archive.read('example.json')), {'T1P6_IMG': ''})
+            self.assertEqual(scene['fonts'], [])
+            self.assertFalse(any('textField' in node for node in scene['nodes']))
+        self.assertEqual(result['fieldCount'], 1)
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_actual_text_defaults_and_optional_font_license_are_preserved(self):
+        (self.root / 'Example-Sans-Regular.ttf').write_bytes((converter.HERE.parent / 'fonts/Barlow-Regular.ttf').read_bytes())
+        source = self.title([])
+        with zipfile.ZipFile(source) as archive:
+            files = {name: archive.read(name) for name in archive.namelist()}
+        files['document.xml'] = b'<Composition Width="320" Height="180"><TextBlock Name="LABEL_TEXT" Text="Original title" FontFamily="Example Sans" Dimensions="300,100,0" /></Composition>'
+        with zipfile.ZipFile(source, 'w') as archive:
+            for name, content in files.items():
+                archive.writestr(name, content)
+        result = converter.convert(source, self.root / 'output', self.root, None, self.cache, 1)
+        self.assertEqual(result['warnings'], [])
+        self.assertEqual(result['fontLicenses'], [{'family':'Example Sans', 'file':'Example-Sans-LICENSE.txt', 'included':False}])
+        with zipfile.ZipFile(self.root / 'output/test.ograf.zip') as archive:
+            self.assertEqual(json.loads(archive.read('example.json')), {'LABEL_TEXT': 'Original title'})
+            self.assertEqual(json.loads(archive.read('defaults.json')), {'LABEL_TEXT': 'Original title'})
+            self.assertFalse(json.loads(archive.read('conversion.json'))['fontLicenses'][0]['included'])
+
     def test_cli_accepts_an_aliased_application_data_root(self):
         source = self.title([''])
         input_folder = self.root / 'input'
