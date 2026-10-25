@@ -273,7 +273,10 @@ export default class ConvertedGtGraphic extends HTMLElement {
         const parent = node.parent === null ? { x: 0, y: 0, opacity: 1, clip: [0, 0, this.scene.width, this.scene.height] } : this.geometry(node.parent, ignoreOpacity);
         const x = parent.x + node.position[0] + state.dx, y = parent.y + node.position[1] + state.dy;
         const visible = node.visibilityField ? this.values[node.visibilityField] !== false : node.visible;
-        const opacity = parent.opacity * state.opacity * (ignoreOpacity ? 1 : node.opacity * (visible ? 1 : 0));
+        // Un masque peut avoir une opacité graphique nulle tout en découpant ses
+        // cibles. Son bouton de visibilité explicite doit cependant les masquer.
+        const maskVisible = !node.visibilityField || visible;
+        const opacity = parent.opacity * state.opacity * (ignoreOpacity ? (maskVisible ? 1 : 0) : node.opacity * (visible ? 1 : 0));
         let clip = [...parent.clip];
         const intersect = (left, top, width, height) => {
             const right = Math.min(clip[0] + clip[2], left + width), bottom = Math.min(clip[1] + clip[3], top + height);
